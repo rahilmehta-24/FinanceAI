@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}FinanceAI - AI-Powered Portfolio Management{% endblock %}
+
+{% block body %}
+<div class="landing-page">
+    <!-- Navigation -->
+    <nav class="landing-nav">
+        <div class="nav-container">
+            <a href="/" class="logo">
+                <span class="logo-icon">📊</span>
+                <span class="logo-text">FinanceAI</span>
+            </a>
+            <div class="nav-links">
+                <a href="{{ url_for('auth.login') }}" class="btn btn-ghost">Login</a>
+                <a href="{{ url_for('auth.register') }}" class="btn btn-primary">Get Started</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-bg">
+            <div class="hero-gradient"></div>
+            <div class="hero-grid"></div>
+        </div>
+        <div class="hero-content">
+            <div class="hero-badge">
+                <span class="badge-icon">✨</span>
+                <span>AI-Powered Analytics</span>
+            </div>
+            <h1 class="hero-title">
+                Smart Portfolio<br>
+                <span class="gradient-text">Management</span>
+            </h1>
+            <p class="hero-subtitle">
+                Track your investments, get AI-powered stock recommendations,
+                and achieve your financial goals with intelligent insights.
+            </p>
+            <div class="hero-cta">
+                <a href="{{ url_for('auth.register') }}" class="btn btn-primary btn-lg">
+                    Start Free Today
+                    <span class="btn-arrow">→</span>
+                </a>
+                <a href="#features" class="btn btn-ghost btn-lg">
+                    Explore Features
+                </a>
+            </div>
+            <div class="hero-stats">
+                <div class="stat">
+                    <span class="stat-value">25+</span>
+                    <span class="stat-label">Stocks Tracked</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value">AI</span>
+                    <span class="stat-label">Powered Analysis</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value">3</span>
+                    <span class="stat-label">Goal Calculators</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Everything You Need</h2>
+                <p class="section-subtitle">Powerful tools to manage your portfolio effectively</p>
+            </div>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+                        📁
+                    </div>
+                    <h3>Portfolio Management</h3>
+                    <p>Add stocks manually, upload in batch, or import from CSV. Track all your investments in one
+                        place.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #f093fb, #f5576c);">
+                        🤖
+                    </div>
+                    <h3>AI Recommendations</h3>
+                    <p>Get intelligent stock recommendations powered by AI analysis. No buy/sell signals, just insights.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #4facfe, #00f2fe);">
+                        📈
+                    </div>
+                    <h3>Top Gainers & Losers</h3>
+                    <p>Stay updated with the top performing and underperforming stocks in real-time.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #43e97b, #38f9d7);">
+                        🎯
+                    </div>
+                    <h3>Goal Calculators</h3>
+                    <p>Plan for short, mid, and long-term financial goals with compound interest projections.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #fa709a, #fee140);">
+                        📊
+                    </div>
+                    <h3>Visual Analytics</h3>
+                    <p>Beautiful charts showing sector distribution, portfolio performance, and trends.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #a18cd1, #fbc2eb);">
+                        🔒
+                    </div>
+                    <h3>Secure & Private</h3>
+                    <p>Your data is stored securely. Login required to access your personalized dashboard.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-card">
+                <h2>Ready to Take Control?</h2>
+                <p>Join FinanceAI and start managing your portfolio with AI-powered insights.</p>
+                <a href="{{ url_for('auth.register') }}" class="btn btn-white btn-lg">
+                    Create Free Account
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="landing-footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-logo">
+                    <span class="logo-icon">📊</span>
+                    <span class="logo-text">FinanceAI</span>
+                </div>
+                <p class="footer-text">
+                    AI-powered portfolio management for everyone.
+                </p>
+            </div>
+        </div>
+    </footer>
+</div>
+{% endblock %}

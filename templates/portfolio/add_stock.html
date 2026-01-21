@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Add Stock - FinanceAI{% endblock %}
+
+{% block body %}
+<div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <a href="{{ url_for('main.dashboard') }}" class="logo">
+                <span class="logo-icon">📊</span>
+                <span class="logo-text">FinanceAI</span>
+            </a>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="{{ url_for('main.dashboard') }}" class="nav-item">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">Dashboard</span>
+            </a>
+            <a href="{{ url_for('portfolio.index') }}" class="nav-item active">
+                <span class="nav-icon">💼</span>
+                <span class="nav-label">Portfolio</span>
+            </a>
+            <a href="{{ url_for('stocks.index') }}" class="nav-item">
+                <span class="nav-icon">📈</span>
+                <span class="nav-label">Stocks</span>
+            </a>
+            <a href="{{ url_for('goals.index') }}" class="nav-item">
+                <span class="nav-icon">🎯</span>
+                <span class="nav-label">Goals</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar">{{ current_user.username[0].upper() }}</div>
+                <div class="user-details">
+                    <span class="user-name">{{ current_user.username }}</span>
+                </div>
+            </div>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-ghost btn-sm">Logout</a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="page-header">
+            <div class="page-header-content">
+                <a href="{{ url_for('portfolio.index') }}" class="back-link">← Back to Portfolio</a>
+                <h1>Add Stock</h1>
+                <p>Add a new stock to your portfolio</p>
+            </div>
+        </header>
+
+        <div class="form-card">
+            <form method="POST" action="{{ url_for('portfolio.add_stock') }}" class="stock-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="symbol">Stock Symbol *</label>
+                        <input type="text" id="symbol" name="symbol" placeholder="e.g. AAPL" required maxlength="10"
+                            style="text-transform: uppercase;">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="company_name">Company Name</label>
+                        <input type="text" id="company_name" name="company_name" placeholder="e.g. Apple Inc.">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="quantity">Quantity *</label>
+                        <input type="number" id="quantity" name="quantity" placeholder="10" required min="0.01"
+                            step="0.01">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="buy_price">Buy Price ($) *</label>
+                        <input type="number" id="buy_price" name="buy_price" placeholder="150.00" required min="0.01"
+                            step="0.01">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="buy_date">Buy Date *</label>
+                        <input type="date" id="buy_date" name="buy_date" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sector">Sector</label>
+                        <select id="sector" name="sector">
+                            <option value="">Select Sector</option>
+                            <option value="Technology">Technology</option>
+                            <option value="Healthcare">Healthcare</option>
+                            <option value="Financial Services">Financial Services</option>
+                            <option value="Consumer Cyclical">Consumer Cyclical</option>
+                            <option value="Consumer Defensive">Consumer Defensive</option>
+                            <option value="Energy">Energy</option>
+                            <option value="Communication Services">Communication Services</option>
+                            <option value="Industrials">Industrials</option>
+                            <option value="Real Estate">Real Estate</option>
+                            <option value="Utilities">Utilities</option>
+                            <option value="Materials">Materials</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <a href="{{ url_for('portfolio.index') }}" class="btn btn-ghost">Cancel</a>
+                    <button type="submit" class="btn btn-primary">Add Stock</button>
+                </div>
+            </form>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Set default date to today
+    document.getElementById('buy_date').valueAsDate = new Date();
+</script>
+{% endblock %}

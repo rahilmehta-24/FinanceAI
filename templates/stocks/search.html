@@ -1,0 +1,1083 @@
+{% extends "base.html" %}
+
+{% block title %}Stock Search - FinanceAI{% endblock %}
+
+{% block body %}
+<div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <a href="{{ url_for('main.dashboard') }}" class="logo">
+                <span class="logo-icon">📊</span>
+                <span class="logo-text">FinanceAI</span>
+            </a>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="{{ url_for('main.dashboard') }}" class="nav-item">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">Dashboard</span>
+            </a>
+            <a href="{{ url_for('portfolio.index') }}" class="nav-item">
+                <span class="nav-icon">💼</span>
+                <span class="nav-label">Portfolio</span>
+            </a>
+            <a href="{{ url_for('stocks.index') }}" class="nav-item active">
+                <span class="nav-icon">📈</span>
+                <span class="nav-label">Stocks</span>
+            </a>
+            <a href="{{ url_for('goals.index') }}" class="nav-item">
+                <span class="nav-icon">🎯</span>
+                <span class="nav-label">Goals</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar">{{ current_user.username[0].upper() }}</div>
+                <div class="user-details">
+                    <span class="user-name">{{ current_user.username }}</span>
+                </div>
+            </div>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-ghost btn-sm">Logout</a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="page-header">
+            <div class="page-header-content">
+                <a href="{{ url_for('stocks.index') }}" class="back-link">← Back to Stocks</a>
+                <h1>Stock Search</h1>
+                <p>Search for stocks and view detailed information</p>
+            </div>
+        </header>
+
+        <!-- Search Section -->
+        <div class="card search-card">
+            <div class="card-body">
+                <div class="search-container">
+                    <div class="search-input-wrapper">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="stockSearch" class="search-input"
+                            placeholder="Search by symbol or company name (e.g., RELIANCE, TCS, HDFC)..."
+                            autocomplete="off">
+                        <div id="searchDropdown" class="search-dropdown"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stock Details Container (Hidden initially) -->
+        <div id="stockDetails" class="stock-details-container" style="display: none;">
+            <!-- Loading State -->
+            <div id="loadingState" class="loading-state">
+                <div class="spinner"></div>
+                <p>Loading stock data...</p>
+            </div>
+
+            <!-- Stock Overview -->
+            <div id="stockOverview" class="card" style="display: none;">
+                <div class="card-header">
+                    <div class="stock-header-info">
+                        <h2 id="stockName">-</h2>
+                        <span class="symbol-badge large" id="stockSymbol">-</span>
+                        <span class="sector-badge" id="stockSector">-</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="price-display">
+                        <span class="current-price" id="currentPrice">₹0.00</span>
+                        <span class="price-change" id="priceChange">+₹0.00 (0.00%)</span>
+                    </div>
+                    <div class="price-stats">
+                        <div class="stat-item">
+                            <span class="label">Open</span>
+                            <span class="value" id="openPrice">₹0.00</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">High</span>
+                            <span class="value" id="highPrice">₹0.00</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Low</span>
+                            <span class="value" id="lowPrice">₹0.00</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Prev Close</span>
+                            <span class="value" id="prevClose">₹0.00</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Volume</span>
+                            <span class="value" id="volume">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Avg Volume</span>
+                            <span class="value" id="avgVolume">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Price Chart -->
+            <div id="chartSection" class="card" style="display: none;">
+                <div class="card-header">
+                    <h3>📈 Price Chart</h3>
+                    <div class="period-selector">
+                        <button class="period-btn" data-period="1d">1D</button>
+                        <button class="period-btn" data-period="5d">5D</button>
+                        <button class="period-btn active" data-period="1mo">1M</button>
+                        <button class="period-btn" data-period="3mo">3M</button>
+                        <button class="period-btn" data-period="1y">1Y</button>
+                        <button class="period-btn" data-period="5y">5Y</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height: 350px;">
+                        <canvas id="priceChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Volume Chart -->
+            <div id="volumeSection" class="card" style="display: none;">
+                <div class="card-header">
+                    <h3>📊 Volume</h3>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height: 200px;">
+                        <canvas id="volumeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Financial Ratios -->
+            <div id="ratiosSection" class="card" style="display: none;">
+                <div class="card-header">
+                    <h3>📋 Key Financial Ratios</h3>
+                </div>
+                <div class="card-body">
+                    <div class="ratios-grid">
+                        <!-- Valuation -->
+                        <div class="ratio-category">
+                            <h4>Valuation</h4>
+                            <div class="ratio-item">
+                                <span class="label">P/E Ratio <span class="tooltip-icon"
+                                        data-tooltip="Price-to-Earnings: Shows how much investors pay per rupee of earnings. Lower may indicate undervalued, higher may indicate growth expectations.">ⓘ</span></span>
+                                <span class="value" id="peRatio">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">Forward P/E <span class="tooltip-icon"
+                                        data-tooltip="Forward P/E uses estimated future earnings. Useful for comparing current valuation to expected growth.">ⓘ</span></span>
+                                <span class="value" id="peForward">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">P/B Ratio <span class="tooltip-icon"
+                                        data-tooltip="Price-to-Book: Compares stock price to book value. Below 1 may indicate undervalued, above 3 may indicate overvalued.">ⓘ</span></span>
+                                <span class="value" id="pbRatio">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">P/S Ratio <span class="tooltip-icon"
+                                        data-tooltip="Price-to-Sales: Compares stock price to revenue per share. Useful for companies with no earnings yet.">ⓘ</span></span>
+                                <span class="value" id="psRatio">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">PEG Ratio <span class="tooltip-icon"
+                                        data-tooltip="Price/Earnings to Growth: P/E divided by growth rate. Below 1 may indicate undervalued relative to growth.">ⓘ</span></span>
+                                <span class="value" id="pegRatio">-</span>
+                            </div>
+                        </div>
+
+                        <!-- Profitability -->
+                        <div class="ratio-category">
+                            <h4>Profitability</h4>
+                            <div class="ratio-item">
+                                <span class="label">EPS <span class="tooltip-icon"
+                                        data-tooltip="Earnings Per Share: Net profit divided by outstanding shares. Higher EPS indicates better profitability.">ⓘ</span></span>
+                                <span class="value" id="eps">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">ROE <span class="tooltip-icon"
+                                        data-tooltip="Return on Equity: Measures how effectively company uses shareholders' equity to generate profits. Above 15% is generally good.">ⓘ</span></span>
+                                <span class="value" id="roe">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">ROA <span class="tooltip-icon"
+                                        data-tooltip="Return on Assets: Shows how efficiently company uses its assets to generate profit. Higher is better.">ⓘ</span></span>
+                                <span class="value" id="roa">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">Profit Margin <span class="tooltip-icon"
+                                        data-tooltip="Net Profit Margin: Percentage of revenue that becomes profit after all expenses. Higher indicates better efficiency.">ⓘ</span></span>
+                                <span class="value" id="profitMargin">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">Operating Margin <span class="tooltip-icon"
+                                        data-tooltip="Operating Margin: Percentage of revenue left after operating expenses. Shows operational efficiency.">ⓘ</span></span>
+                                <span class="value" id="operatingMargin">-</span>
+                            </div>
+                        </div>
+
+                        <!-- Market Data -->
+                        <div class="ratio-category">
+                            <h4>Market Data</h4>
+                            <div class="ratio-item">
+                                <span class="label">Market Cap <span class="tooltip-icon"
+                                        data-tooltip="Market Capitalization: Total market value of company's shares. Large cap > ₹20,000 Cr, Mid cap > ₹5,000 Cr.">ⓘ</span></span>
+                                <span class="value" id="marketCap">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">52W High <span class="tooltip-icon"
+                                        data-tooltip="52-Week High: Highest trading price in the last 52 weeks. Helps gauge current price relative to recent peak.">ⓘ</span></span>
+                                <span class="value" id="week52High">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">52W Low <span class="tooltip-icon"
+                                        data-tooltip="52-Week Low: Lowest trading price in the last 52 weeks. Helps gauge current price relative to recent bottom.">ⓘ</span></span>
+                                <span class="value" id="week52Low">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">50D MA <span class="tooltip-icon"
+                                        data-tooltip="50-Day Moving Average: Average closing price over last 50 days. Price above MA suggests uptrend.">ⓘ</span></span>
+                                <span class="value" id="ma50">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">200D MA <span class="tooltip-icon"
+                                        data-tooltip="200-Day Moving Average: Long-term trend indicator. Price above 200D MA is bullish signal.">ⓘ</span></span>
+                                <span class="value" id="ma200">-</span>
+                            </div>
+                        </div>
+
+                        <!-- Dividends & Debt -->
+                        <div class="ratio-category">
+                            <h4>Dividends & Debt</h4>
+                            <div class="ratio-item">
+                                <span class="label">Dividend Yield <span class="tooltip-icon"
+                                        data-tooltip="Dividend Yield: Annual dividend as percentage of stock price. Above 2% is considered good for income investing.">ⓘ</span></span>
+                                <span class="value" id="divYield">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">Payout Ratio <span class="tooltip-icon"
+                                        data-tooltip="Payout Ratio: Percentage of earnings paid as dividends. Below 60% is sustainable, above 80% may be risky.">ⓘ</span></span>
+                                <span class="value" id="payoutRatio">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">Debt/Equity <span class="tooltip-icon"
+                                        data-tooltip="Debt-to-Equity: Measures financial leverage. Below 1 is conservative, above 2 indicates high debt.">ⓘ</span></span>
+                                <span class="value" id="debtEquity">-</span>
+                            </div>
+                            <div class="ratio-item">
+                                <span class="label">Book Value <span class="tooltip-icon"
+                                        data-tooltip="Book Value per Share: Net asset value per share. Compare with stock price to assess if overvalued or undervalued.">ⓘ</span></span>
+                                <span class="value" id="bookValue">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Company Info -->
+            <div id="companySection" class="card" style="display: none;">
+                <div class="card-header">
+                    <h3>🏢 Company Information</h3>
+                </div>
+                <div class="card-body">
+                    <div class="company-info-grid">
+                        <div class="info-item">
+                            <span class="label">Industry</span>
+                            <span class="value" id="industry">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Employees</span>
+                            <span class="value" id="employees">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Website</span>
+                            <a class="value" id="website" href="#" target="_blank">-</a>
+                        </div>
+                    </div>
+                    <div class="company-description" id="companyDescription">-</div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<style>
+    /* Search Styles */
+    .search-card {
+        margin-bottom: 1.5rem;
+        overflow: visible !important;
+    }
+
+    .search-card .card-body {
+        overflow: visible !important;
+    }
+
+    .search-container {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .search-input-wrapper {
+        position: relative;
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 1.25rem;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 1rem 1rem 1rem 3rem;
+        font-size: 1.1rem;
+        background: var(--bg-secondary);
+        border: 2px solid var(--border-color);
+        border-radius: 12px;
+        color: var(--text-primary);
+        transition: all 0.3s ease;
+    }
+
+    .search-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
+    }
+
+    .search-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: #1a1f2e;
+        border: 2px solid #667eea;
+        border-radius: 12px;
+        margin-top: 0.5rem;
+        max-height: 300px;
+        overflow-y: auto;
+        z-index: 1000;
+        display: none;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(102, 126, 234, 0.3);
+    }
+
+    .search-dropdown.show {
+        display: block !important;
+    }
+
+    .search-result-item {
+        padding: 0.75rem 1rem;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: background 0.2s;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .search-result-item:last-child {
+        border-bottom: none;
+    }
+
+    .search-result-item:hover {
+        background: rgba(102, 126, 234, 0.2);
+    }
+
+    .search-result-item .symbol {
+        font-weight: 600;
+        color: #667eea;
+        margin-right: 0.5rem;
+    }
+
+    .search-result-item .name {
+        color: #e2e8f0;
+        font-size: 0.9rem;
+    }
+
+    .search-result-item .sector {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        background: rgba(102, 126, 234, 0.3);
+        border-radius: 4px;
+        color: #a0aec0;
+    }
+
+    /* Loading State */
+    .loading-state {
+        text-align: center;
+        padding: 3rem;
+    }
+
+    .spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid var(--border-color);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    /* Stock Overview */
+    .stock-header-info {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .symbol-badge.large {
+        font-size: 1rem;
+        padding: 0.5rem 1rem;
+    }
+
+    .sector-badge {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+    }
+
+    .price-display {
+        margin-bottom: 1.5rem;
+    }
+
+    .current-price {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        display: block;
+    }
+
+    .price-change {
+        font-size: 1.1rem;
+        font-weight: 500;
+    }
+
+    .price-change.positive {
+        color: var(--success);
+    }
+
+    .price-change.negative {
+        color: var(--danger);
+    }
+
+    .price-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 1rem;
+    }
+
+    .price-stats .stat-item {
+        text-align: center;
+        padding: 0.75rem;
+        background: var(--bg-secondary);
+        border-radius: 8px;
+    }
+
+    .price-stats .label {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin-bottom: 0.25rem;
+    }
+
+    .price-stats .value {
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    /* Period Selector */
+    .period-selector {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .period-btn {
+        padding: 0.5rem 1rem;
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: var(--text-secondary);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .period-btn:hover {
+        border-color: var(--primary);
+        color: var(--primary);
+    }
+
+    .period-btn.active {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: white;
+    }
+
+    /* Ratios Grid */
+    .ratios-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .ratio-category h4 {
+        font-size: 0.9rem;
+        color: var(--primary);
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .ratio-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .ratio-item .label {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .ratio-item .value {
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    /* Tooltip Styles */
+    .tooltip-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        font-size: 11px;
+        color: #667eea;
+        cursor: help;
+        position: relative;
+        opacity: 0.6;
+        transition: opacity 0.2s;
+        flex-shrink: 0;
+    }
+
+    .tooltip-icon:hover {
+        opacity: 1;
+    }
+
+    .tooltip-icon:hover::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        background: #0f1219;
+        border: 1px solid #667eea;
+        color: #e2e8f0;
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-size: 11px;
+        font-weight: 400;
+        line-height: 1.5;
+        width: 220px;
+        text-align: left;
+        z-index: 10000;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        white-space: normal;
+    }
+
+    .tooltip-icon:hover::before {
+        content: '';
+        position: absolute;
+        top: calc(100% + 2px);
+        left: 6px;
+        border: 6px solid transparent;
+        border-bottom-color: #667eea;
+        z-index: 10001;
+    }
+
+    /* Company Info */
+    .company-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .info-item {
+        padding: 0.75rem;
+        background: var(--bg-secondary);
+        border-radius: 8px;
+    }
+
+    .info-item .label {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin-bottom: 0.25rem;
+    }
+
+    .info-item .value {
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .company-description {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        line-height: 1.6;
+    }
+
+    /* Stock Details Container */
+    .stock-details-container .card {
+        margin-bottom: 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let priceChart = null;
+    let volumeChart = null;
+    let currentSymbol = null;
+    let searchTimeout = null;
+
+    const searchInput = document.getElementById('stockSearch');
+    const searchDropdown = document.getElementById('searchDropdown');
+    const stockDetails = document.getElementById('stockDetails');
+    const loadingState = document.getElementById('loadingState');
+
+    // Search functionality with debounce
+    searchInput.addEventListener('input', function () {
+        const query = this.value.trim();
+
+        clearTimeout(searchTimeout);
+
+        if (query.length < 1) {
+            searchDropdown.classList.remove('show');
+            return;
+        }
+
+        searchTimeout = setTimeout(() => {
+            fetchSearchResults(query);
+        }, 300);
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('.search-input-wrapper')) {
+            searchDropdown.classList.remove('show');
+        }
+    });
+
+    async function fetchSearchResults(query) {
+        try {
+            const response = await fetch(`/api/stocks/search?q=${encodeURIComponent(query)}`);
+
+            // Check if response is OK
+            if (!response.ok) {
+                console.error('Search API error:', response.status);
+                searchDropdown.innerHTML = '<div class="search-result-item"><span class="name">Error loading results</span></div>';
+                searchDropdown.classList.add('show');
+                return;
+            }
+
+            const results = await response.json();
+
+            if (Array.isArray(results) && results.length > 0) {
+                searchDropdown.innerHTML = results.map(stock => `
+                    <div class="search-result-item" onclick="selectStock('${stock.symbol}')">
+                        <div>
+                            <span class="symbol">${stock.symbol}</span>
+                            <span class="name">${stock.name}</span>
+                        </div>
+                        <span class="sector">${stock.sector}</span>
+                    </div>
+                `).join('');
+                searchDropdown.classList.add('show');
+            } else if (Array.isArray(results) && results.length === 0) {
+                searchDropdown.innerHTML = '<div class="search-result-item"><span class="name">No results found. Try: RELIANCE, TCS, HDFC, INFY</span></div>';
+                searchDropdown.classList.add('show');
+            } else {
+                // Response might be HTML (redirect), not JSON
+                searchDropdown.innerHTML = '<div class="search-result-item"><span class="name">Please refresh the page and try again</span></div>';
+                searchDropdown.classList.add('show');
+            }
+        } catch (error) {
+            console.error('Search error:', error);
+            searchDropdown.innerHTML = '<div class="search-result-item"><span class="name">Search failed. Check console for details.</span></div>';
+            searchDropdown.classList.add('show');
+        }
+    }
+
+    async function selectStock(symbol) {
+        currentSymbol = symbol;
+        searchInput.value = symbol;
+        searchDropdown.classList.remove('show');
+
+        // Show loading state
+        stockDetails.style.display = 'block';
+        loadingState.style.display = 'block';
+        hideAllSections();
+
+        try {
+            // Fetch stock details
+            const detailsResponse = await fetch(`/api/stocks/${symbol}`);
+            const details = await detailsResponse.json();
+
+            if (details.error && !details.price) {
+                throw new Error(details.error);
+            }
+
+            // Populate stock overview
+            populateOverview(details);
+
+            // Fetch history for chart
+            await loadChart('1mo');
+
+            // Show all sections
+            loadingState.style.display = 'none';
+            showAllSections();
+
+        } catch (error) {
+            console.error('Error loading stock:', error);
+            loadingState.innerHTML = `<p>Error loading stock data: ${error.message}</p>`;
+        }
+    }
+
+    function hideAllSections() {
+        document.getElementById('stockOverview').style.display = 'none';
+        document.getElementById('chartSection').style.display = 'none';
+        document.getElementById('volumeSection').style.display = 'none';
+        document.getElementById('ratiosSection').style.display = 'none';
+        document.getElementById('companySection').style.display = 'none';
+    }
+
+    function showAllSections() {
+        document.getElementById('stockOverview').style.display = 'block';
+        document.getElementById('chartSection').style.display = 'block';
+        document.getElementById('volumeSection').style.display = 'block';
+        document.getElementById('ratiosSection').style.display = 'block';
+        document.getElementById('companySection').style.display = 'block';
+    }
+
+    function populateOverview(data) {
+        document.getElementById('stockName').textContent = data.name || '-';
+        document.getElementById('stockSymbol').textContent = data.symbol || '-';
+        document.getElementById('stockSector').textContent = data.sector || '-';
+
+        const price = data.price || {};
+        document.getElementById('currentPrice').textContent = `₹${formatNumber(price.current || 0)}`;
+
+        const change = price.change || 0;
+        const changePct = price.change_percent || 0;
+        const changeEl = document.getElementById('priceChange');
+        changeEl.textContent = `${change >= 0 ? '+' : ''}₹${formatNumber(change)} (${changePct >= 0 ? '+' : ''}${changePct}%)`;
+        changeEl.className = `price-change ${change >= 0 ? 'positive' : 'negative'}`;
+
+        document.getElementById('openPrice').textContent = `₹${formatNumber(price.open || 0)}`;
+        document.getElementById('highPrice').textContent = `₹${formatNumber(price.high || 0)}`;
+        document.getElementById('lowPrice').textContent = `₹${formatNumber(price.low || 0)}`;
+        document.getElementById('prevClose').textContent = `₹${formatNumber(price.previous_close || 0)}`;
+
+        const volume = data.volume || {};
+        document.getElementById('volume').textContent = formatLargeNumber(volume.current || 0);
+        document.getElementById('avgVolume').textContent = formatLargeNumber(volume.average || 0);
+
+        // Ratios
+        const ratios = data.ratios || {};
+        document.getElementById('peRatio').textContent = formatRatio(ratios.pe);
+        document.getElementById('peForward').textContent = formatRatio(ratios.pe_forward);
+        document.getElementById('pbRatio').textContent = formatRatio(ratios.pb);
+        document.getElementById('psRatio').textContent = formatRatio(ratios.ps);
+        document.getElementById('pegRatio').textContent = formatRatio(ratios.peg);
+        document.getElementById('eps').textContent = `₹${formatNumber(ratios.eps || 0)}`;
+        document.getElementById('roe').textContent = formatPercent(ratios.roe);
+        document.getElementById('roa').textContent = formatPercent(ratios.roa);
+        document.getElementById('profitMargin').textContent = formatPercent(ratios.profit_margin);
+        document.getElementById('operatingMargin').textContent = formatPercent(ratios.operating_margin);
+        document.getElementById('debtEquity').textContent = formatRatio(ratios.debt_to_equity);
+        document.getElementById('bookValue').textContent = `₹${formatNumber(ratios.book_value || 0)}`;
+
+        // Market data
+        const market = data.market || {};
+        document.getElementById('marketCap').textContent = formatMarketCap(market.cap || 0);
+
+        const week52 = data.week_52 || {};
+        document.getElementById('week52High').textContent = `₹${formatNumber(week52.high || 0)}`;
+        document.getElementById('week52Low').textContent = `₹${formatNumber(week52.low || 0)}`;
+
+        const ma = data.moving_avg || {};
+        document.getElementById('ma50').textContent = `₹${formatNumber(ma.ma_50 || 0)}`;
+        document.getElementById('ma200').textContent = `₹${formatNumber(ma.ma_200 || 0)}`;
+
+        // Dividends
+        const dividends = data.dividends || {};
+        document.getElementById('divYield').textContent = formatPercent(dividends.yield);
+        document.getElementById('payoutRatio').textContent = formatPercent(dividends.payout_ratio);
+
+        // Company info
+        const company = data.company || {};
+        document.getElementById('industry').textContent = data.industry || '-';
+        document.getElementById('employees').textContent = company.employees ? formatLargeNumber(company.employees) : '-';
+
+        const websiteEl = document.getElementById('website');
+        if (company.website) {
+            websiteEl.href = company.website;
+            websiteEl.textContent = company.website.replace(/^https?:\/\//, '');
+        } else {
+            websiteEl.textContent = '-';
+            websiteEl.href = '#';
+        }
+
+        document.getElementById('companyDescription').textContent = company.description || 'No description available.';
+    }
+
+    async function loadChart(period) {
+        if (!currentSymbol) return;
+
+        try {
+            const response = await fetch(`/api/stocks/${currentSymbol}/history?period=${period}`);
+            const data = await response.json();
+
+            if (data.error) {
+                console.error('Chart error:', data.error);
+                return;
+            }
+
+            // Set current period for label formatting
+            currentPeriod = period;
+            renderCharts(data.data);
+
+            // Update active period button
+            document.querySelectorAll('.period-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.period === period);
+            });
+
+        } catch (error) {
+            console.error('Error loading chart:', error);
+        }
+    }
+
+    function renderCharts(data) {
+        const labels = data.map(d => formatChartLabel(d.date));
+        const prices = data.map(d => d.close);
+        const volumes = data.map(d => d.volume);
+
+        // Price Chart
+        const priceCtx = document.getElementById('priceChart').getContext('2d');
+        if (priceChart) priceChart.destroy();
+
+        priceChart = new Chart(priceCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Price',
+                    data: prices,
+                    borderColor: 'rgba(102, 126, 234, 1)',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: 'rgba(102, 126, 234, 1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(26, 31, 46, 0.95)',
+                        titleColor: '#e2e8f0',
+                        bodyColor: '#e2e8f0',
+                        borderColor: '#667eea',
+                        borderWidth: 1,
+                        cornerRadius: 8,
+                        padding: 12,
+                        displayColors: false,
+                        callbacks: {
+                            title: (items) => items[0].label,
+                            label: ctx => `Price: ₹${ctx.parsed.y.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        border: { display: false },
+                        ticks: {
+                            color: '#a0aec0',
+                            font: { size: 11 },
+                            callback: value => '₹' + formatCompactNumber(value),
+                            maxTicksLimit: 6
+                        }
+                    },
+                    x: {
+                        grid: { display: false },
+                        border: { display: false },
+                        ticks: {
+                            color: '#a0aec0',
+                            font: { size: 10 },
+                            maxTicksLimit: 6,
+                            maxRotation: 0
+                        }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+
+        // Volume Chart
+        const volumeCtx = document.getElementById('volumeChart').getContext('2d');
+        if (volumeChart) volumeChart.destroy();
+
+        volumeChart = new Chart(volumeCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Volume',
+                    data: volumes,
+                    backgroundColor: volumes.map((v, i) =>
+                        i > 0 && prices[i] >= prices[i - 1]
+                            ? 'rgba(67, 233, 123, 0.6)'
+                            : 'rgba(245, 87, 108, 0.6)'
+                    ),
+                    borderRadius: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(26, 31, 46, 0.95)',
+                        titleColor: '#e2e8f0',
+                        bodyColor: '#e2e8f0',
+                        borderColor: '#667eea',
+                        borderWidth: 1,
+                        cornerRadius: 8,
+                        callbacks: {
+                            label: ctx => `Volume: ${formatLargeNumber(ctx.parsed.y)}`
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        border: { display: false },
+                        ticks: {
+                            color: '#a0aec0',
+                            font: { size: 10 },
+                            callback: value => formatCompactNumber(value),
+                            maxTicksLimit: 4
+                        }
+                    },
+                    x: {
+                        grid: { display: false },
+                        border: { display: false },
+                        ticks: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Smart label formatting based on current period
+    let currentPeriod = '1mo';
+
+    function formatChartLabel(dateStr) {
+        if (!dateStr) return '';
+
+        // Handle intraday format (YYYY-MM-DD HH:MM)
+        if (dateStr.includes(' ')) {
+            const parts = dateStr.split(' ');
+            return parts[1]; // Just show time like "09:30"
+        }
+
+        // Handle date format (YYYY-MM-DD)
+        const date = new Date(dateStr);
+        const day = date.getDate();
+        const month = date.toLocaleString('en-IN', { month: 'short' });
+        const year = date.getFullYear().toString().slice(-2);
+
+        // Format based on current period
+        if (currentPeriod === '1d' || currentPeriod === '5d') {
+            return `${day} ${month}`;
+        } else if (currentPeriod === '1mo' || currentPeriod === '3mo') {
+            return `${day} ${month}`;
+        } else {
+            return `${month} '${year}`;
+        }
+    }
+
+    function formatCompactNumber(num) {
+        if (num >= 10000000) return (num / 10000000).toFixed(1) + 'Cr';
+        if (num >= 100000) return (num / 100000).toFixed(1) + 'L';
+        if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+        return num.toFixed(0);
+    }
+
+    // Period button click handlers
+    document.querySelectorAll('.period-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            loadChart(btn.dataset.period);
+        });
+    });
+
+    // Format helpers
+    function formatNumber(num) {
+        if (!num || isNaN(num)) return '0.00';
+        return parseFloat(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatLargeNumber(num) {
+        if (!num || isNaN(num)) return '0';
+        if (num >= 10000000) return (num / 10000000).toFixed(2) + ' Cr';
+        if (num >= 100000) return (num / 100000).toFixed(2) + ' L';
+        if (num >= 1000) return (num / 1000).toFixed(2) + ' K';
+        return num.toLocaleString('en-IN');
+    }
+
+    function formatMarketCap(num) {
+        if (!num || isNaN(num)) return '-';
+        if (num >= 10000000000000) return '₹' + (num / 10000000000000).toFixed(2) + ' L Cr';
+        if (num >= 100000000000) return '₹' + (num / 100000000000).toFixed(2) + ' K Cr';
+        if (num >= 10000000) return '₹' + (num / 10000000).toFixed(2) + ' Cr';
+        return '₹' + formatLargeNumber(num);
+    }
+
+    function formatRatio(num) {
+        if (!num || isNaN(num) || num === 0) return '-';
+        return parseFloat(num).toFixed(2);
+    }
+
+    function formatPercent(num) {
+        if (!num || isNaN(num)) return '-';
+        return (parseFloat(num) * 100).toFixed(2) + '%';
+    }
+</script>
+{% endblock %}

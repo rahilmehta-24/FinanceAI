@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}Financial Goals - FinanceAI{% endblock %}
+
+{% block body %}
+<div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <a href="{{ url_for('main.dashboard') }}" class="logo">
+                <span class="logo-icon">📊</span>
+                <span class="logo-text">FinanceAI</span>
+            </a>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="{{ url_for('main.dashboard') }}" class="nav-item">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">Dashboard</span>
+            </a>
+            <a href="{{ url_for('portfolio.index') }}" class="nav-item">
+                <span class="nav-icon">💼</span>
+                <span class="nav-label">Portfolio</span>
+            </a>
+            <a href="{{ url_for('stocks.index') }}" class="nav-item">
+                <span class="nav-icon">📈</span>
+                <span class="nav-label">Stocks</span>
+            </a>
+            <a href="{{ url_for('goals.index') }}" class="nav-item active">
+                <span class="nav-icon">🎯</span>
+                <span class="nav-label">Goals</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar">{{ current_user.username[0].upper() }}</div>
+                <div class="user-details">
+                    <span class="user-name">{{ current_user.username }}</span>
+                </div>
+            </div>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-ghost btn-sm">Logout</a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="page-header">
+            <div class="page-header-content">
+                <h1>Financial Goals</h1>
+                <p>Track and plan your financial goals</p>
+            </div>
+            <div class="page-header-actions">
+                <a href="{{ url_for('goals.calculator') }}" class="btn btn-primary">
+                    <span>🧮</span> Goal Calculator
+                </a>
+            </div>
+        </header>
+
+        <!-- Goal Type Sections -->
+        <div class="goals-grid">
+            <!-- Short-term Goals -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>⚡ Short-term Goals</h3>
+                    <span class="badge">
+                        < 1 year</span>
+                </div>
+                <div class="card-body">
+                    {% if short_term %}
+                    <div class="goals-list">
+                        {% for goal in short_term %}
+                        <div class="goal-item">
+                            <div class="goal-info">
+                                <span class="goal-name">{{ goal.name }}</span>
+                                <span class="goal-target">₹{{ "%.0f"|format(goal.target_amount) }}</span>
+                            </div>
+                            <div class="goal-progress">
+                                {% set progress = (goal.current_savings / goal.target_amount * 100) if
+                                goal.target_amount > 0 else 0 %}
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: {{ progress }}%"></div>
+                                </div>
+                                <span class="progress-text">{{ "%.0f"|format(progress) }}%</span>
+                            </div>
+                            <form action="{{ url_for('goals.delete_goal', id=goal.id) }}" method="POST"
+                                style="display:inline;">
+                                <button type="submit" class="btn btn-ghost btn-sm">🗑️</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="empty-state-small">
+                        <p>No short-term goals yet</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Mid-term Goals -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>📅 Mid-term Goals</h3>
+                    <span class="badge">1-5 years</span>
+                </div>
+                <div class="card-body">
+                    {% if mid_term %}
+                    <div class="goals-list">
+                        {% for goal in mid_term %}
+                        <div class="goal-item">
+                            <div class="goal-info">
+                                <span class="goal-name">{{ goal.name }}</span>
+                                <span class="goal-target">₹{{ "%.0f"|format(goal.target_amount) }}</span>
+                            </div>
+                            <div class="goal-progress">
+                                {% set progress = (goal.current_savings / goal.target_amount * 100) if
+                                goal.target_amount > 0 else 0 %}
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: {{ progress }}%"></div>
+                                </div>
+                                <span class="progress-text">{{ "%.0f"|format(progress) }}%</span>
+                            </div>
+                            <form action="{{ url_for('goals.delete_goal', id=goal.id) }}" method="POST"
+                                style="display:inline;">
+                                <button type="submit" class="btn btn-ghost btn-sm">🗑️</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="empty-state-small">
+                        <p>No mid-term goals yet</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Long-term Goals -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>🎯 Long-term Goals</h3>
+                    <span class="badge">5+ years</span>
+                </div>
+                <div class="card-body">
+                    {% if long_term %}
+                    <div class="goals-list">
+                        {% for goal in long_term %}
+                        <div class="goal-item">
+                            <div class="goal-info">
+                                <span class="goal-name">{{ goal.name }}</span>
+                                <span class="goal-target">₹{{ "%.0f"|format(goal.target_amount) }}</span>
+                            </div>
+                            <div class="goal-progress">
+                                {% set progress = (goal.current_savings / goal.target_amount * 100) if
+                                goal.target_amount > 0 else 0 %}
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: {{ progress }}%"></div>
+                                </div>
+                                <span class="progress-text">{{ "%.0f"|format(progress) }}%</span>
+                            </div>
+                            <form action="{{ url_for('goals.delete_goal', id=goal.id) }}" method="POST"
+                                style="display:inline;">
+                                <button type="submit" class="btn btn-ghost btn-sm">🗑️</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="empty-state-small">
+                        <p>No long-term goals yet</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Goal Form -->
+        <div class="card">
+            <div class="card-header">
+                <h3>➕ Create New Goal</h3>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('goals.add_goal') }}" class="goal-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="name">Goal Name</label>
+                            <input type="text" id="name" name="name" placeholder="e.g. Emergency Fund" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="goal_type">Goal Type</label>
+                            <select id="goal_type" name="goal_type" required>
+                                <option value="short">Short-term (< 1 year)</option>
+                                <option value="mid">Mid-term (1-5 years)</option>
+                                <option value="long">Long-term (5+ years)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="target_amount">Target Amount (₹)</label>
+                            <input type="number" id="target_amount" name="target_amount" placeholder="10000" required
+                                min="1" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="current_savings">Current Savings (₹)</label>
+                            <input type="number" id="current_savings" name="current_savings" placeholder="0" min="0"
+                                step="1" value="0">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="monthly_contribution">Monthly Contribution (₹)</label>
+                            <input type="number" id="monthly_contribution" name="monthly_contribution" placeholder="500"
+                                min="0" step="1" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="expected_return">Expected Return (%)</label>
+                            <input type="number" id="expected_return" name="expected_return" placeholder="8" min="0"
+                                max="30" step="0.5" value="8">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="target_date">Target Date (Optional)</label>
+                        <input type="date" id="target_date" name="target_date">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Create Goal</button>
+                </form>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}

@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+
+{% block title %}Goal Calculator - FinanceAI{% endblock %}
+
+{% block body %}
+<div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <a href="{{ url_for('main.dashboard') }}" class="logo">
+                <span class="logo-icon">📊</span>
+                <span class="logo-text">FinanceAI</span>
+            </a>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="{{ url_for('main.dashboard') }}" class="nav-item">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">Dashboard</span>
+            </a>
+            <a href="{{ url_for('portfolio.index') }}" class="nav-item">
+                <span class="nav-icon">💼</span>
+                <span class="nav-label">Portfolio</span>
+            </a>
+            <a href="{{ url_for('stocks.index') }}" class="nav-item">
+                <span class="nav-icon">📈</span>
+                <span class="nav-label">Stocks</span>
+            </a>
+            <a href="{{ url_for('goals.index') }}" class="nav-item active">
+                <span class="nav-icon">🎯</span>
+                <span class="nav-label">Goals</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar">{{ current_user.username[0].upper() }}</div>
+                <div class="user-details">
+                    <span class="user-name">{{ current_user.username }}</span>
+                </div>
+            </div>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-ghost btn-sm">Logout</a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="page-header">
+            <div class="page-header-content">
+                <a href="{{ url_for('goals.index') }}" class="back-link">← Back to Goals</a>
+                <h1>Goal Calculator</h1>
+                <p>Calculate how long to reach your financial goals</p>
+            </div>
+        </header>
+
+        <!-- Calculator Tabs -->
+        <div class="calculator-tabs">
+            <button class="tab-btn active" data-tab="short" onclick="switchTab('short')">
+                ⚡ Short-term
+            </button>
+            <button class="tab-btn" data-tab="mid" onclick="switchTab('mid')">
+                📅 Mid-term
+            </button>
+            <button class="tab-btn" data-tab="long" onclick="switchTab('long')">
+                🎯 Long-term
+            </button>
+        </div>
+
+        <div class="calculator-grid">
+            <!-- Calculator Form -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 id="calculatorTitle">⚡ Short-term Goal Calculator</h3>
+                    <p id="calculatorDesc" class="text-muted">For goals under 1 year</p>
+                </div>
+                <div class="card-body">
+                    <form id="calculatorForm" class="calculator-form">
+                        <input type="hidden" id="goal_type" name="goal_type" value="short">
+
+                        <div class="form-group">
+                            <label for="target_amount">Target Amount (₹)</label>
+                            <input type="number" id="target_amount" name="target_amount" placeholder="10000" required
+                                min="1" step="1" value="10000">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="current_savings">Current Savings (₹)</label>
+                            <input type="number" id="current_savings" name="current_savings" placeholder="0" min="0"
+                                step="1" value="1000">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="monthly_contribution">Monthly Contribution (₹)</label>
+                            <input type="number" id="monthly_contribution" name="monthly_contribution" placeholder="500"
+                                min="0" step="1" value="500">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="expected_return">Expected Annual Return (%)</label>
+                            <input type="number" id="expected_return" name="expected_return" placeholder="4" min="0"
+                                max="30" step="0.5" value="4">
+                            <small class="text-muted" id="returnHint">Recommended: 3-5% for short-term</small>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-block">
+                            Calculate
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div class="card" id="resultsCard" style="display: none;">
+                <div class="card-header">
+                    <h3>📊 Projection Results</h3>
+                </div>
+                <div class="card-body">
+                    <div class="result-stats" id="resultStats">
+                        <!-- Filled by JavaScript -->
+                    </div>
+
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="projectionChart"></canvas>
+                    </div>
+
+                    <div class="result-insights" id="resultInsights">
+                        <!-- Filled by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Goal Type Info Cards -->
+        <div class="info-cards">
+            <div class="info-card" id="infoShort">
+                <div class="info-icon">⚡</div>
+                <h4>Short-term Goals</h4>
+                <p>Emergency fund, vacation, small purchases</p>
+                <ul>
+                    <li>Timeline: Under 1 year</li>
+                    <li>Risk: Low</li>
+                    <li>Suggested: High-yield savings, CDs</li>
+                </ul>
+            </div>
+
+            <div class="info-card" id="infoMid" style="display: none;">
+                <div class="info-icon">📅</div>
+                <h4>Mid-term Goals</h4>
+                <p>Car, home down payment, education</p>
+                <ul>
+                    <li>Timeline: 1-5 years</li>
+                    <li>Risk: Moderate</li>
+                    <li>Suggested: Bond funds, balanced portfolios</li>
+                </ul>
+            </div>
+
+            <div class="info-card" id="infoLong" style="display: none;">
+                <div class="info-icon">🎯</div>
+                <h4>Long-term Goals</h4>
+                <p>Retirement, wealth building</p>
+                <ul>
+                    <li>Timeline: 5+ years</li>
+                    <li>Risk: Higher tolerance</li>
+                    <li>Suggested: Stock index funds, diversified equity</li>
+                </ul>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let projectionChart = null;
+
+    const goalTypeConfig = {
+        short: {
+            title: '⚡ Short-term Goal Calculator',
+            desc: 'For goals under 1 year',
+            return: 4,
+            hint: 'Recommended: 3-5% for short-term'
+        },
+        mid: {
+            title: '📅 Mid-term Goal Calculator',
+            desc: 'For goals 1-5 years',
+            return: 6,
+            hint: 'Recommended: 5-8% for mid-term'
+        },
+        long: {
+            title: '🎯 Long-term Goal Calculator',
+            desc: 'For goals 5+ years',
+            return: 10,
+            hint: 'Recommended: 8-12% for long-term'
+        }
+    };
+
+    function switchTab(type) {
+        // Update tabs
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.tab === type) btn.classList.add('active');
+        });
+
+        // Update form
+        const config = goalTypeConfig[type];
+        document.getElementById('goal_type').value = type;
+        document.getElementById('calculatorTitle').textContent = config.title;
+        document.getElementById('calculatorDesc').textContent = config.desc;
+        document.getElementById('expected_return').value = config.return;
+        document.getElementById('returnHint').textContent = config.hint;
+
+        // Update info cards
+        document.querySelectorAll('.info-card').forEach(card => card.style.display = 'none');
+        document.getElementById('info' + type.charAt(0).toUpperCase() + type.slice(1)).style.display = 'block';
+    }
+
+    document.getElementById('calculatorForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+
+        try {
+            const response = await fetch('{{ url_for("goals.calculate") }}', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            displayResults(data);
+        } catch (error) {
+            console.error('Calculation error:', error);
+        }
+    });
+
+    function displayResults(data) {
+        const resultsCard = document.getElementById('resultsCard');
+        const resultStats = document.getElementById('resultStats');
+        const resultInsights = document.getElementById('resultInsights');
+
+        resultsCard.style.display = 'block';
+
+        // Stats
+        resultStats.innerHTML = `
+        <div class="result-stat">
+            <span class="stat-label">Time to Goal</span>
+            <span class="stat-value">${data.years_needed ? data.years_needed + ' years' : 'N/A'}</span>
+        </div>
+        <div class="result-stat">
+            <span class="stat-label">Target Date</span>
+            <span class="stat-value">${data.target_date || 'N/A'}</span>
+        </div>
+        <div class="result-stat">
+            <span class="stat-label">Final Amount</span>
+            <span class="stat-value">₹${data.final_amount.toLocaleString('en-IN')}</span>
+        </div>
+    `;
+
+        // Insights
+        resultInsights.innerHTML = `
+        <div class="insight ${data.status}">
+            <span class="insight-icon">${data.status === 'on_track' ? '✅' : '⚠️'}</span>
+            <span>${data.status_message}</span>
+        </div>
+        ${data.required_contribution !== parseFloat(document.getElementById('monthly_contribution').value) ?
+                `<div class="insight suggestion">
+                <span class="insight-icon">💡</span>
+                <span>To reach goal in typical timeframe, contribute ₹${data.required_contribution.toLocaleString('en-IN')}/month</span>
+            </div>` : ''
+            }
+    `;
+
+        // Chart
+        renderProjectionChart(data.projection);
+    }
+
+    function renderProjectionChart(projection) {
+        const ctx = document.getElementById('projectionChart').getContext('2d');
+
+        if (projectionChart) {
+            projectionChart.destroy();
+        }
+
+        projectionChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: projection.map(p => 'Month ' + p.month),
+                datasets: [
+                    {
+                        label: 'Total Amount',
+                        data: projection.map(p => p.amount),
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Contributions',
+                        data: projection.map(p => p.contributions),
+                        borderColor: 'rgba(67, 233, 123, 1)',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#a0aec0' }
+                    }
+                },
+                scales: {
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.1)' },
+                        ticks: {
+                            color: '#a0aec0',
+                            callback: value => '₹' + value.toLocaleString('en-IN')
+                        }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#a0aec0' }
+                    }
+                }
+            }
+        });
+    }
+</script>
+{% endblock %}

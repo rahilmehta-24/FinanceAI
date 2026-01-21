@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Stocks - FinanceAI{% endblock %}
+
+{% block body %}
+<div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <a href="{{ url_for('main.dashboard') }}" class="logo">
+                <span class="logo-icon">📊</span>
+                <span class="logo-text">FinanceAI</span>
+            </a>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="{{ url_for('main.dashboard') }}" class="nav-item">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">Dashboard</span>
+            </a>
+            <a href="{{ url_for('portfolio.index') }}" class="nav-item">
+                <span class="nav-icon">💼</span>
+                <span class="nav-label">Portfolio</span>
+            </a>
+            <a href="{{ url_for('stocks.index') }}" class="nav-item active">
+                <span class="nav-icon">📈</span>
+                <span class="nav-label">Stocks</span>
+            </a>
+            <a href="{{ url_for('goals.index') }}" class="nav-item">
+                <span class="nav-icon">🎯</span>
+                <span class="nav-label">Goals</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar">{{ current_user.username[0].upper() }}</div>
+                <div class="user-details">
+                    <span class="user-name">{{ current_user.username }}</span>
+                </div>
+            </div>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-ghost btn-sm">Logout</a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="page-header">
+            <div class="page-header-content">
+                <h1>Stock Analytics</h1>
+                <p>AI-powered stock recommendations and market insights</p>
+            </div>
+            <div class="page-header-actions">
+                <a href="{{ url_for('stocks.search') }}" class="btn btn-primary">
+                    <span>🔍</span> Search Stocks
+                </a>
+            </div>
+        </header>
+
+        <!-- Gainers & Losers -->
+        <div class="stocks-grid">
+            <!-- Top Gainers -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>📈 Top Gainers</h3>
+                </div>
+                <div class="card-body">
+                    <div class="stock-list">
+                        {% for stock in top_gainers[:5] %}
+                        <div class="stock-item">
+                            <div class="stock-info">
+                                <span class="symbol-badge">{{ stock.symbol }}</span>
+                                <span class="stock-name">{{ stock.name }}</span>
+                            </div>
+                            <div class="stock-price">
+                                <span class="price">₹{{ "%.2f"|format(stock.price) }}</span>
+                                <span class="change text-success">+{{ "%.2f"|format(stock.change_pct) }}%</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Losers -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>📉 Top Losers</h3>
+                </div>
+                <div class="card-body">
+                    <div class="stock-list">
+                        {% for stock in top_losers[:5] %}
+                        <div class="stock-item">
+                            <div class="stock-info">
+                                <span class="symbol-badge">{{ stock.symbol }}</span>
+                                <span class="stock-name">{{ stock.name }}</span>
+                            </div>
+                            <div class="stock-price">
+                                <span class="price">₹{{ "%.2f"|format(stock.price) }}</span>
+                                <span class="change text-danger">{{ "%.2f"|format(stock.change_pct) }}%</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sector Distribution -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Sector Distribution</h3>
+            </div>
+            <div class="card-body">
+                <div class="sector-chart-container">
+                    <canvas id="sectorBarChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Recommendations -->
+        <div class="card">
+            <div class="card-header">
+                <h3>🤖 AI Stock Analysis</h3>
+                <span class="badge badge-info">Informational Only</span>
+            </div>
+            <div class="card-body">
+                <div class="info-banner">
+                    <span class="info-icon">ℹ️</span>
+                    <p>These are AI-generated insights for informational purposes only. We do not provide buy, hold, or
+                        sell recommendations.</p>
+                </div>
+
+                <div class="recommendations-grid">
+                    {% for stock in recommendations[:12] %}
+                    <div class="recommendation-card">
+                        <div class="rec-header">
+                            <span class="symbol-badge">{{ stock.symbol }}</span>
+                            <span class="ai-score" style="background: linear-gradient(135deg, 
+                                {% if stock.ai_score >= 70 %}#43e97b, #38f9d7
+                                {% elif stock.ai_score >= 40 %}#4facfe, #00f2fe
+                                {% else %}#f5576c, #f093fb{% endif %});">
+                                AI Score: {{ stock.ai_score }}
+                            </span>
+                        </div>
+                        <div class="rec-name">{{ stock.name }}</div>
+                        <div class="rec-price">
+                            ₹{{ "%.2f"|format(stock.price) }}
+                            <span class="{% if stock.change >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                {% if stock.change >= 0 %}+{% endif %}₹{{ "%.2f"|format(stock.change) }}
+                            </span>
+                        </div>
+                        <div class="rec-indicators">
+                            <span class="indicator" title="Momentum">
+                                {{ stock.momentum.icon }} {{ stock.momentum.value }}
+                            </span>
+                            <span class="indicator" title="Volatility">
+                                📊 {{ stock.volatility.value }}
+                            </span>
+                        </div>
+                        <div class="rec-analysis">{{ stock.analysis }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const sectorData = {{ sector_distribution | tojson }};
+    const labels = Object.keys(sectorData);
+    const values = Object.values(sectorData);
+
+    new Chart(document.getElementById('sectorBarChart'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Stocks per Sector',
+                data: values,
+                backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                borderRadius: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255,255,255,0.1)' },
+                    ticks: { color: '#a0aec0' }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#a0aec0' }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}
