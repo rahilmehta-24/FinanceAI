@@ -57,14 +57,28 @@
             <form method="POST" action="{{ url_for('portfolio.add_stock') }}" class="stock-form">
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="symbol">Stock Symbol *</label>
-                        <input type="text" id="symbol" name="symbol" placeholder="e.g. AAPL" required maxlength="10"
-                            style="text-transform: uppercase;">
+                        <label for="symbol">Stock Symbol * <small>(NSE/BSE only)</small></label>
+                        <input type="text" id="symbol" name="symbol" placeholder="e.g. TCS.NS, RELIANCE.NS" required
+                            maxlength="20" style="text-transform: uppercase;" autocomplete="off">
+                        <div id="symbol-suggestions" class="autocomplete-suggestions"></div>
+                        <small class="form-hint">Enter Indian stock symbols ending with .NS (NSE) or .BO (BSE)</small>
                     </div>
 
                     <div class="form-group">
                         <label for="company_name">Company Name</label>
-                        <input type="text" id="company_name" name="company_name" placeholder="e.g. Apple Inc.">
+                        <input type="text" id="company_name" name="company_name" placeholder="Auto-filled" readonly>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="current_price">Current Price (₹)</label>
+                        <input type="text" id="current_price" placeholder="Auto-filled" readonly>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sector">Sector</label>
+                        <input type="text" id="sector" name="sector" placeholder="Auto-filled" readonly>
                     </div>
                 </div>
 
@@ -76,8 +90,8 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="buy_price">Buy Price ($) *</label>
-                        <input type="number" id="buy_price" name="buy_price" placeholder="150.00" required min="0.01"
+                        <label for="buy_price">Buy Price (₹) *</label>
+                        <input type="number" id="buy_price" name="buy_price" placeholder="2500.00" required min="0.01"
                             step="0.01">
                     </div>
                 </div>
@@ -89,21 +103,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="sector">Sector</label>
-                        <select id="sector" name="sector">
-                            <option value="">Select Sector</option>
-                            <option value="Technology">Technology</option>
-                            <option value="Healthcare">Healthcare</option>
-                            <option value="Financial Services">Financial Services</option>
-                            <option value="Consumer Cyclical">Consumer Cyclical</option>
-                            <option value="Consumer Defensive">Consumer Defensive</option>
-                            <option value="Energy">Energy</option>
-                            <option value="Communication Services">Communication Services</option>
-                            <option value="Industrials">Industrials</option>
-                            <option value="Real Estate">Real Estate</option>
-                            <option value="Utilities">Utilities</option>
-                            <option value="Materials">Materials</option>
-                        </select>
+                        <!-- Empty space for alignment -->
                     </div>
                 </div>
 
@@ -118,8 +118,156 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+    .autocomplete-suggestions {
+        position: absolute;
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        max-height: 200px;
+        overflow-y: auto;
+        width: calc(100% - 2px);
+        z-index: 1000;
+        margin-top: 4px;
+        display: none;
+    }
+
+    .autocomplete-suggestion {
+        padding: 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #334155;
+    }
+
+    .autocomplete-suggestion:hover {
+        background: #334155;
+    }
+
+    .autocomplete-suggestion:last-child {
+        border-bottom: none;
+    }
+
+    .suggestion-symbol {
+        font-weight: 600;
+        color: #667eea;
+    }
+
+    .suggestion-name {
+        color: #cbd5e1;
+        font-size: 0.9em;
+    }
+
+    .form-hint {
+        display: block;
+        margin-top: 4px;
+        color: #94a3b8;
+        font-size: 0.85em;
+    }
+</style>
+
 <script>
     // Set default date to today
     document.getElementById('buy_date').valueAsDate = new Date();
+
+    const symbolInput = document.getElementById('symbol');
+    const suggestionsDiv = document.getElementById('symbol-suggestions');
+    const companyNameInput = document.getElementById('company_name');
+    const currentPriceInput = document.getElementById('current_price');
+    const sectorInput = document.getElementById('sector');
+
+    let debounceTimer;
+
+    // Autocomplete functionality
+    symbolInput.addEventListener('input', function () {
+        clearTimeout(debounceTimer);
+        const query = this.value.trim().toUpperCase();
+
+        if (query.length < 1) {
+            suggestionsDiv.style.display = 'none';
+            return;
+        }
+
+        debounceTimer = setTimeout(() => {
+            fetch(`/api/stocks/search?q=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.length > 0) {
+                        suggestionsDiv.innerHTML = data.map(stock => `
+                            <div class="autocomplete-suggestion" data-symbol="${stock.symbol}">
+                                <div class="suggestion-symbol">${stock.symbol}</div>
+                                <div class="suggestion-name">${stock.name}</div>
+                            </div>
+                        `).join('');
+                        suggestionsDiv.style.display = 'block';
+                    } else {
+                        suggestionsDiv.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching suggestions:', error);
+                    suggestionsDiv.style.display = 'none';
+                });
+        }, 300);
+    });
+
+    // Handle suggestion click
+    suggestionsDiv.addEventListener('click', function (e) {
+        const suggestion = e.target.closest('.autocomplete-suggestion');
+        if (suggestion) {
+            const symbol = suggestion.dataset.symbol;
+            symbolInput.value = symbol;
+            suggestionsDiv.style.display = 'none';
+
+            // Fetch stock info
+            fetchStockInfo(symbol);
+        }
+    });
+
+    // Fetch stock info when user types complete symbol and presses Enter or Tab
+    symbolInput.addEventListener('blur', function () {
+        setTimeout(() => {
+            suggestionsDiv.style.display = 'none';
+        }, 200);
+
+        const symbol = this.value.trim().toUpperCase();
+        if (symbol && (symbol.endsWith('.NS') || symbol.endsWith('.BO'))) {
+            fetchStockInfo(symbol);
+        }
+    });
+
+    function fetchStockInfo(symbol) {
+        // Show loading state
+        companyNameInput.value = 'Loading...';
+        currentPriceInput.value = 'Loading...';
+        sectorInput.value = 'Loading...';
+
+        fetch(`/api/stocks/info/${encodeURIComponent(symbol)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    companyNameInput.value = '';
+                    currentPriceInput.value = '';
+                    sectorInput.value = '';
+                } else {
+                    companyNameInput.value = data.name || '';
+                    currentPriceInput.value = data.current_price ? `₹${data.current_price.toFixed(2)}` : '';
+                    sectorInput.value = data.sector || '';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching stock info:', error);
+                companyNameInput.value = '';
+                currentPriceInput.value = '';
+                sectorInput.value = '';
+                alert('Error fetching stock information. Please try again.');
+            });
+    }
+
+    // Close suggestions when clicking outside
+    document.addEventListener('click', function (e) {
+        if (!symbolInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
+            suggestionsDiv.style.display = 'none';
+        }
+    });
 </script>
 {% endblock %}

@@ -31,6 +31,58 @@ def search_stocks():
     return jsonify(results[:15])
 
 
+@api_bp.route('/stocks/info/<symbol>')
+@login_required
+def get_stock_info_api(symbol):
+    """Get basic stock info for autocomplete - Indian stocks only"""
+    try:
+        from services.stock_service import validate_indian_stock, fetch_real_time_price
+        
+        symbol = symbol.upper().strip()
+        
+        # Validate it's an Indian stock
+        if not validate_indian_stock(symbol):
+            return jsonify({'error': 'Only Indian stocks (NSE/BSE) are supported. Symbol must end with .NS or .BO'}), 400
+        
+        # Try to get stock info from yfinance
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        fast_info = ticker.fast_info
+        
+        # Get current price
+        current_price = None
+        if hasattr(fast_info, 'last_price') and fast_info.last_price:
+            current_price = round(fast_info.last_price, 2)
+        elif hasattr(fast_info, 'previous_close') and fast_info.previous_close:
+            current_price = round(fast_info.previous_close, 2)
+        else:
+            # Fallback to fetch_real_time_price
+            current_price = fetch_real_time_price(symbol)
+        
+        # Get company name and sector
+        company_name = info.get('longName', info.get('shortName', ''))
+        sector = info.get('sector', '')
+        
+        # Fallback to STOCK_DATA if available
+        if not company_name and symbol in STOCK_DATA:
+            company_name = STOCK_DATA[symbol]['name']
+            sector = STOCK_DATA[symbol]['sector']
+            if not current_price:
+                current_price = STOCK_DATA[symbol]['price']
+        
+        return jsonify({
+            'symbol': symbol,
+            'name': company_name,
+            'sector': sector,
+            'current_price': current_price if current_price else 0
+        })
+        
+    except Exception as e:
+        print(f"Error fetching stock info for {symbol}: {e}")
+        return jsonify({'error': f'Could not fetch stock information: {str(e)}'}), 500
+
+
+
 @api_bp.route('/stocks/<symbol>')
 @login_required
 def get_stock_details(symbol):

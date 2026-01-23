@@ -93,7 +93,7 @@
             <div class="card-body">
                 {% if holdings %}
                 <div class="table-container">
-                    <table class="data-table">
+                    <table class="data-table portfolio-table">
                         <thead>
                             <tr>
                                 <th>Symbol</th>
@@ -103,32 +103,35 @@
                                 <th>Current Price</th>
                                 <th>Value</th>
                                 <th>Gain/Loss</th>
+                                <th>Buy Date</th>
                                 <th>Sector</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for h in holdings %}
-                            <tr>
+                            <tr data-holding-id="{{ h.id }}">
                                 <td>
-                                    <span class="symbol-badge">{{ h.symbol }}</span>
+                                    <span class="symbol-badge symbol">{{ h.symbol }}</span>
                                 </td>
-                                <td>{{ h.company_name or '-' }}</td>
-                                <td>{{ h.quantity }}</td>
-                                <td>₹{{ "%.2f"|format(h.buy_price) }}</td>
-                                <td>₹{{ "%.2f"|format(h.current_price) }}</td>
-                                <td>₹{{ "%.2f"|format(h.current_value) }}</td>
-                                <td class="{% if h.gain_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                <td class="company-name">{{ h.company_name or '-' }}</td>
+                                <td class="quantity">{{ h.quantity }}</td>
+                                <td class="buy-price">₹{{ "%.2f"|format(h.buy_price) }}</td>
+                                <td class="current-price">₹{{ "%.2f"|format(h.current_price) }}</td>
+                                <td class="current-value">₹{{ "%.2f"|format(h.current_value) }}</td>
+                                <td
+                                    class="gain-loss {% if h.gain_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
                                     {% if h.gain_loss >= 0 %}+{% endif %}₹{{ "%.2f"|format(h.gain_loss) }}
                                     <small>({{ "%.2f"|format(h.gain_loss_pct) }}%)</small>
                                 </td>
-                                <td>{{ h.sector or 'N/A' }}</td>
-                                <td>
-                                    <form action="{{ url_for('portfolio.delete_stock', id=h.id) }}" method="POST"
-                                        style="display: inline;"
-                                        onsubmit="return confirm('Remove {{ h.symbol }} from portfolio?')">
-                                        <button type="submit" class="btn btn-ghost btn-sm text-danger">🗑️</button>
-                                    </form>
+                                <td class="buy-date">
+                                    <span data-date="{{ h.buy_date }}">{{ h.buy_date.strftime('%d %b %Y') }}</span>
+                                </td>
+                                <td class="sector">{{ h.sector or 'N/A' }}</td>
+                                <td class="actions">
+                                    <button class="btn btn-ghost btn-sm btn-edit" title="Edit">📝</button>
+                                    <button class="btn btn-ghost btn-sm btn-delete text-danger"
+                                        title="Delete">🗑️</button>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -211,4 +214,121 @@
     });
 </script>
 {% endif %}
+
+{% block extra_css %}
+<style>
+    /* Inline editing styles */
+    tr.editing {
+        background-color: #1e3a5f !important;
+        box-shadow: 0 0 0 2px #667eea;
+    }
+
+    tr.editing .edit-input {
+        width: 100%;
+        padding: 6px 10px;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 4px;
+        color: #e2e8f0;
+        font-size: 0.9rem;
+    }
+
+    tr.editing .edit-input:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+
+    tr.loading {
+        opacity: 0.6;
+        pointer-events: none;
+    }
+
+    tr.deleting {
+        transition: all 0.3s ease;
+    }
+
+    tr.row-updated {
+        animation: flashSuccess 1s ease;
+    }
+
+    @keyframes flashSuccess {
+
+        0%,
+        100% {
+            background-color: transparent;
+        }
+
+        50% {
+            background-color: rgba(34, 197, 94, 0.2);
+        }
+    }
+
+    /* Toast notifications */
+    .toast {
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        padding: 16px 24px;
+        background: #1e293b;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        color: #e2e8f0;
+        font-size: 0.95rem;
+        transform: translateX(400px);
+        transition: transform 0.3s ease;
+        z-index: 10000;
+        max-width: 350px;
+    }
+
+    .toast.show {
+        transform: translateX(0);
+    }
+
+    .toast.toast-success {
+        border-left: 4px solid #22c55e;
+    }
+
+    .toast.toast-error {
+        border-left: 4px solid #ef4444;
+    }
+
+    .toast.toast-warning {
+        border-left: 4px solid #f59e0b;
+    }
+
+    .toast.toast-info {
+        border-left: 4px solid #3b82f6;
+    }
+
+    /* Button styles */
+    .btn-edit:hover {
+        background-color: #334155;
+    }
+
+    .btn-delete:hover {
+        background-color: rgba(239, 68, 68, 0.1);
+    }
+
+    .btn-save {
+        background-color: rgba(34, 197, 94, 0.1);
+        color: #22c55e;
+    }
+
+    .btn-save:hover {
+        background-color: rgba(34, 197, 94, 0.2);
+    }
+
+    .btn-cancel {
+        background-color: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
+    }
+
+    .btn-cancel:hover {
+        background-color: rgba(239, 68, 68, 0.2);
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/portfolio.js') }}"></script>
 {% endblock %}

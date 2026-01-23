@@ -4,6 +4,43 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 import time
 
+def get_stock_market(symbol):
+    """
+    Determine market and currency based on stock symbol
+    Application restricted to Indian stocks only
+    
+    Args:
+        symbol: Stock ticker symbol (e.g., 'TCS.NS', 'RELIANCE.NS')
+    
+    Returns:
+        dict: {'market': 'IN', 'currency': '₹', 'currency_code': 'INR'}
+    """
+    # Always return Indian market - application restricted to Indian stocks only
+    return {
+        'market': 'IN',
+        'currency': '₹',
+        'currency_code': 'INR'
+    }
+
+
+def validate_indian_stock(symbol):
+    """
+    Validate that the stock symbol is an Indian stock
+    
+    Args:
+        symbol: Stock ticker symbol
+    
+    Returns:
+        bool: True if valid Indian stock, False otherwise
+    """
+    if not symbol:
+        return False
+    
+    # Must end with .NS (NSE) or .BO (BSE)
+    return symbol.upper().endswith('.NS') or symbol.upper().endswith('.BO')
+
+
+
 # Cache for storing stock prices with timestamps
 _price_cache = {}
 _cache_ttl = 300  # 5 minutes cache
@@ -161,7 +198,11 @@ def fetch_multiple_stocks(symbols):
 
 
 def get_current_prices(symbols):
-    """Get current prices for given symbols - uses real API with fallback"""
+    """Get current prices for given symbols - uses real API with fallback
+    
+    Returns:
+        dict: {symbol: {'price': float, 'currency': str, 'currency_code': str, 'market': str}}
+    """
     prices = {}
     
     if not symbols:
@@ -171,21 +212,28 @@ def get_current_prices(symbols):
     real_prices = fetch_multiple_stocks(symbols)
     
     for symbol in symbols:
+        market_info = get_stock_market(symbol)
+        
         if symbol in real_prices and real_prices[symbol]:
-            prices[symbol] = real_prices[symbol]
+            price = real_prices[symbol]
         elif symbol in STOCK_DATA:
             # Fallback to simulated data with slight variation
             base_price = STOCK_DATA[symbol]['price']
             variation = random.uniform(-0.02, 0.02)
-            prices[symbol] = round(base_price * (1 + variation), 2)
+            price = round(base_price * (1 + variation), 2)
         else:
             # For completely unknown symbols, try individual fetch
             price = fetch_real_time_price(symbol)
-            if price:
-                prices[symbol] = price
-            else:
+            if not price:
                 # Last resort: generate a placeholder
-                prices[symbol] = round(random.uniform(50, 500), 2)
+                price = round(random.uniform(50, 500), 2)
+        
+        prices[symbol] = {
+            'price': price,
+            'currency': market_info['currency'],
+            'currency_code': market_info['currency_code'],
+            'market': market_info['market']
+        }
     
     return prices
 
@@ -229,6 +277,7 @@ def get_top_gainers(limit=10):
     current_prices = fetch_multiple_stocks(symbols)
     
     for symbol, data in STOCK_DATA.items():
+        market_info = get_stock_market(symbol)
         current_price = current_prices.get(symbol, data['price'])
         base_price = data['price']
         change = current_price - base_price
@@ -240,7 +289,8 @@ def get_top_gainers(limit=10):
             'price': current_price,
             'change': round(change, 2),
             'change_pct': round(change_pct, 2),
-            'sector': data['sector']
+            'sector': data['sector'],
+            'currency': market_info['currency']
         })
     
     # Sort by change percentage descending
@@ -257,6 +307,7 @@ def get_top_losers(limit=10):
     current_prices = fetch_multiple_stocks(symbols)
     
     for symbol, data in STOCK_DATA.items():
+        market_info = get_stock_market(symbol)
         current_price = current_prices.get(symbol, data['price'])
         base_price = data['price']
         change = current_price - base_price
@@ -268,7 +319,8 @@ def get_top_losers(limit=10):
             'price': current_price,
             'change': round(change, 2),
             'change_pct': round(change_pct, 2),
-            'sector': data['sector']
+            'sector': data['sector'],
+            'currency': market_info['currency']
         })
     
     # Sort by change percentage ascending
@@ -284,6 +336,7 @@ def get_stock_recommendations():
     
     for symbol in symbols:
         data = STOCK_DATA[symbol]
+        market_info = get_stock_market(symbol)
         current_price = current_prices.get(symbol, data['price'])
         
         recommendations.append({
@@ -292,7 +345,8 @@ def get_stock_recommendations():
             'sector': data['sector'],
             'price': current_price,
             'daily_change': data['change'],
-            'analysis': get_stock_analysis(symbol)
+            'analysis': get_stock_analysis(symbol),
+            'currency': market_info['currency']
         })
     return recommendations
 
@@ -341,7 +395,11 @@ def get_portfolio_summary(holdings):
     
     for h in holdings:
         invested = h.quantity * h.buy_price
-        current = h.quantity * current_prices.get(h.symbol, h.buy_price)
+        
+        # Handle new price data structure
+        price_data = current_prices.get(h.symbol, {'price': h.buy_price})
+        price = price_data['price'] if isinstance(price_data, dict) else price_data
+        current = h.quantity * price
         
         total_invested += invested
         current_value += current

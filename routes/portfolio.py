@@ -23,7 +23,17 @@ def index():
     holdings_data = []
     total_current = 0
     for h in holdings:
-        current_price = current_prices.get(h.symbol, h.buy_price)
+        # Get price data with currency info
+        price_data = current_prices.get(h.symbol, {
+            'price': h.buy_price,
+            'currency': '₹',
+            'currency_code': 'INR',
+            'market': 'IN'
+        })
+        
+        current_price = price_data['price'] if isinstance(price_data, dict) else price_data
+        currency = price_data.get('currency', '₹') if isinstance(price_data, dict) else '₹'
+        
         current_value = h.quantity * current_price
         gain_loss = current_value - (h.quantity * h.buy_price)
         gain_loss_pct = ((current_price - h.buy_price) / h.buy_price) * 100 if h.buy_price > 0 else 0
@@ -40,7 +50,9 @@ def index():
             'gain_loss': gain_loss,
             'gain_loss_pct': gain_loss_pct,
             'sector': h.sector,
-            'buy_date': h.buy_date
+            'buy_date': h.buy_date,
+            'currency': currency,
+            'market': price_data.get('market', 'IN') if isinstance(price_data, dict) else 'IN'
         })
     
     # Sector distribution
@@ -60,12 +72,19 @@ def index():
 @login_required
 def add_stock():
     if request.method == 'POST':
+        from services.stock_service import validate_indian_stock
+        
         symbol = request.form.get('symbol', '').upper().strip()
         company_name = request.form.get('company_name', '').strip()
         quantity = float(request.form.get('quantity', 0))
         buy_price = float(request.form.get('buy_price', 0))
         buy_date = datetime.strptime(request.form.get('buy_date'), '%Y-%m-%d').date()
         sector = request.form.get('sector', '').strip()
+        
+        # Validate Indian stock
+        if not validate_indian_stock(symbol):
+            flash('Only Indian stocks are supported. Please use NSE (.NS) or BSE (.BO) symbols (e.g., TCS.NS, RELIANCE.NS)', 'error')
+            return redirect(url_for('portfolio.add_stock'))
         
         if not symbol or quantity <= 0 or buy_price <= 0:
             flash('Please fill in all required fields correctly', 'error')
@@ -169,6 +188,106 @@ def upload_csv():
     
     return redirect(url_for('portfolio.index'))
 
+@portfolio_bp.route('/api/holdings/<int:id>', methods=['PUT'])
+@login_required
+def update_holding(id):
+    """Update a holding via AJAX"""
+    try:
+        holding = Holding.query.get_or_404(id)
+        
+        # Verify ownership
+        if holding.user_id != current_user.id:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+        data = request.get_json()
+        
+        # Update fields
+        if 'quantity' in data:
+            quantity = float(data['quantity'])
+            if quantity <= 0:
+                return jsonify({'success': False, 'error': 'Quantity must be greater than 0'}), 400
+            holding.quantity = quantity
+        
+        if 'buy_price' in data:
+            buy_price = float(data['buy_price'])
+            if buy_price <= 0:
+                return jsonify({'success': False, 'error': 'Buy price must be greater than 0'}), 400
+            holding.buy_price = buy_price
+        
+        if 'buy_date' in data:
+            holding.buy_date = datetime.strptime(data['buy_date'], '%Y-%m-%d').date()
+        
+        if 'sector' in data:
+            holding.sector = data['sector']
+        
+        db.session.commit()
+        
+        # Get updated current price
+        from services.stock_service import get_current_prices
+        current_prices = get_current_prices([holding.symbol])
+        price_data = current_prices.get(holding.symbol, {
+            'price': holding.buy_price,
+            'currency': '₹',
+            'currency_code': 'INR',
+            'market': 'IN'
+        })
+        
+        current_price = price_data['price']
+        current_value = holding.quantity * current_price
+        gain_loss = current_value - (holding.quantity * holding.buy_price)
+        gain_loss_pct = (gain_loss / (holding.quantity * holding.buy_price)) * 100 if holding.buy_price else 0
+        
+        return jsonify({
+            'success': True,
+            'message': f'{holding.symbol} updated successfully',
+            'holding': {
+                'id': holding.id,
+                'symbol': holding.symbol,
+                'company_name': holding.company_name,
+                'quantity': holding.quantity,
+                'buy_price': holding.buy_price,
+                'buy_date': holding.buy_date.strftime('%Y-%m-%d'),
+                'sector': holding.sector,
+                'current_price': current_price,
+                'current_value': current_value,
+                'gain_loss': gain_loss,
+                'gain_loss_pct': gain_loss_pct
+            }
+        })
+        
+    except ValueError as e:
+        return jsonify({'success': False, 'error': 'Invalid data format'}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@portfolio_bp.route('/api/holdings/<int:id>', methods=['DELETE'])
+@login_required
+def delete_holding_ajax(id):
+    """Delete a holding via AJAX"""
+    try:
+        holding = Holding.query.get_or_404(id)
+        
+        # Verify ownership
+        if holding.user_id != current_user.id:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+        symbol = holding.symbol
+        db.session.delete(holding)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'{symbol} removed from your portfolio'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Keep the old delete route for backward compatibility
 @portfolio_bp.route('/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_stock(id):

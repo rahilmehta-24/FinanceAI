@@ -42,6 +42,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const forms = document.querySelectorAll('form');
     forms.forEach(form => {
         form.addEventListener('submit', function (e) {
+            // Skip loading state for delete forms (they redirect immediately)
+            if (form.action && form.action.includes('/delete/')) {
+                return;
+            }
+
             const btn = form.querySelector('button[type="submit"]');
             if (btn) {
                 btn.disabled = true;
