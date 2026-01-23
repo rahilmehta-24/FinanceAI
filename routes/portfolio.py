@@ -16,12 +16,16 @@ def index():
     # Calculate portfolio stats
     total_invested = sum(h.quantity * h.buy_price for h in holdings)
     
-    # Simulated current prices (in production, fetch from API)
-    from services.stock_service import get_current_prices
-    current_prices = get_current_prices([h.symbol for h in holdings])
+    # Fetch current prices and dividend info
+    from services.stock_service import get_current_prices, get_dividend_info
+    symbols = [h.symbol for h in holdings]
+    current_prices = get_current_prices(symbols)
+    dividend_info = get_dividend_info(symbols)
     
     holdings_data = []
     total_current = 0
+    total_dividend = 0
+    
     for h in holdings:
         # Get price data with currency info
         price_data = current_prices.get(h.symbol, {
@@ -38,6 +42,11 @@ def index():
         gain_loss = current_value - (h.quantity * h.buy_price)
         gain_loss_pct = ((current_price - h.buy_price) / h.buy_price) * 100 if h.buy_price > 0 else 0
         
+        # Calculate dividend earned (quantity × annual dividend per share)
+        dividend_per_share = dividend_info.get(h.symbol, 0)
+        dividend_earned = h.quantity * dividend_per_share
+        total_dividend += dividend_earned
+        
         total_current += current_value
         holdings_data.append({
             'id': h.id,
@@ -52,7 +61,9 @@ def index():
             'sector': h.sector,
             'buy_date': h.buy_date,
             'currency': currency,
-            'market': price_data.get('market', 'IN') if isinstance(price_data, dict) else 'IN'
+            'market': price_data.get('market', 'IN') if isinstance(price_data, dict) else 'IN',
+            'dividend_per_share': dividend_per_share,
+            'dividend_earned': dividend_earned
         })
     
     # Sector distribution
@@ -66,6 +77,7 @@ def index():
                          total_invested=total_invested,
                          total_current=total_current,
                          total_gain_loss=total_current - total_invested,
+                         total_dividend=total_dividend,
                          sector_data=sector_data)
 
 @portfolio_bp.route('/add', methods=['GET', 'POST'])

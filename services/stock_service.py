@@ -238,6 +238,64 @@ def get_current_prices(symbols):
     return prices
 
 
+# Dividend cache
+_dividend_cache = {}
+_dividend_cache_ttl = 3600  # 1 hour cache for dividends (changes less frequently)
+
+
+def get_dividend_info(symbols):
+    """Get annual dividend per share for given symbols
+    
+    Args:
+        symbols: List of stock symbols
+        
+    Returns:
+        dict: {symbol: dividend_per_share} - Annual dividend amount per share
+    """
+    dividends = {}
+    
+    if not symbols:
+        return dividends
+    
+    symbols_to_fetch = []
+    
+    # Check cache first
+    for symbol in symbols:
+        if symbol in _dividend_cache:
+            cached = _dividend_cache[symbol]
+            if time.time() - cached['timestamp'] < _dividend_cache_ttl:
+                dividends[symbol] = cached['dividend']
+            else:
+                symbols_to_fetch.append(symbol)
+        else:
+            symbols_to_fetch.append(symbol)
+    
+    # Fetch remaining from API
+    for symbol in symbols_to_fetch:
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            
+            # Get annual dividend rate (per share)
+            # dividendRate is the annual dividend amount per share
+            dividend_rate = info.get('dividendRate', 0) or 0
+            
+            dividends[symbol] = round(dividend_rate, 2)
+            _dividend_cache[symbol] = {
+                'dividend': round(dividend_rate, 2),
+                'timestamp': time.time()
+            }
+        except Exception as e:
+            print(f"Error fetching dividend for {symbol}: {e}")
+            dividends[symbol] = 0
+            _dividend_cache[symbol] = {
+                'dividend': 0,
+                'timestamp': time.time()
+            }
+    
+    return dividends
+
+
 def get_stock_info(symbol):
     """Get detailed stock information"""
     try:

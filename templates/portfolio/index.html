@@ -83,6 +83,12 @@
                     </span>
                 </div>
             </div>
+            <div class="stat-card">
+                <div class="stat-content">
+                    <span class="stat-label">Total Dividend (Annual)</span>
+                    <span class="stat-value text-success">₹{{ "%.2f"|format(total_dividend) }}</span>
+                </div>
+            </div>
         </div>
 
         <!-- Holdings Table -->
@@ -103,6 +109,7 @@
                                 <th>Current Price</th>
                                 <th>Value</th>
                                 <th>Gain/Loss</th>
+                                <th>Dividend</th>
                                 <th>Buy Date</th>
                                 <th>Sector</th>
                                 <th>Actions</th>
@@ -124,6 +131,7 @@
                                     {% if h.gain_loss >= 0 %}+{% endif %}₹{{ "%.2f"|format(h.gain_loss) }}
                                     <small>({{ "%.2f"|format(h.gain_loss_pct) }}%)</small>
                                 </td>
+                                <td class="dividend text-success">₹{{ "%.2f"|format(h.dividend_earned) }}</td>
                                 <td class="buy-date">
                                     <span data-date="{{ h.buy_date }}">{{ h.buy_date.strftime('%d %b %Y') }}</span>
                                 </td>
