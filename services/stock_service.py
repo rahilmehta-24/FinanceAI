@@ -296,6 +296,112 @@ def get_dividend_info(symbols):
     return dividends
 
 
+# Corporate actions cache
+_corporate_cache = {}
+_corporate_cache_ttl = 3600  # 1 hour cache
+
+
+def get_corporate_actions(symbol):
+    """Get corporate actions for a stock (dividends, splits, bonus issues, etc.)
+    
+    Args:
+        symbol: Stock ticker symbol
+        
+    Returns:
+        dict: Corporate actions data including dividends, splits, and key dates
+    """
+    # Check cache first
+    if symbol in _corporate_cache:
+        cached = _corporate_cache[symbol]
+        if time.time() - cached['timestamp'] < _corporate_cache_ttl:
+            return cached['data']
+    
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        # Get dividend history (last 5 years)
+        dividends = ticker.dividends
+        dividend_history = []
+        if dividends is not None and len(dividends) > 0:
+            # Get last 10 dividends
+            recent_dividends = dividends.tail(10)
+            for date, amount in recent_dividends.items():
+                dividend_history.append({
+                    'date': date.strftime('%Y-%m-%d'),
+                    'amount': round(float(amount), 2)
+                })
+            dividend_history.reverse()  # Most recent first
+        
+        # Get stock splits history
+        splits = ticker.splits
+        split_history = []
+        if splits is not None and len(splits) > 0:
+            for date, ratio in splits.items():
+                split_history.append({
+                    'date': date.strftime('%Y-%m-%d'),
+                    'ratio': f"{int(ratio)}:1" if ratio >= 1 else f"1:{int(1/ratio)}"
+                })
+            split_history.reverse()  # Most recent first
+        
+        # Get key dates and info
+        ex_dividend_date = info.get('exDividendDate')
+        if ex_dividend_date:
+            ex_dividend_date = datetime.fromtimestamp(ex_dividend_date).strftime('%Y-%m-%d')
+        
+        last_dividend_date = info.get('lastDividendDate')
+        if last_dividend_date:
+            last_dividend_date = datetime.fromtimestamp(last_dividend_date).strftime('%Y-%m-%d')
+        
+        corporate_data = {
+            'symbol': symbol,
+            'company_name': info.get('longName', info.get('shortName', symbol)),
+            'sector': info.get('sector', 'Unknown'),
+            'industry': info.get('industry', 'Unknown'),
+            
+            # Dividend information
+            'dividend_rate': round(info.get('dividendRate', 0) or 0, 2),
+            'dividend_yield': round((info.get('dividendYield', 0) or 0) * 100, 2),
+            'ex_dividend_date': ex_dividend_date,
+            'last_dividend_date': last_dividend_date,
+            'last_dividend_value': round(info.get('lastDividendValue', 0) or 0, 2),
+            'dividend_history': dividend_history[:5],  # Last 5 dividends
+            
+            # Stock splits / Bonus issues
+            'split_history': split_history,
+            
+            # Key financials
+            'pe_ratio': round(info.get('trailingPE', 0) or 0, 2),
+            'book_value': round(info.get('bookValue', 0) or 0, 2),
+            'eps': round(info.get('trailingEps', 0) or 0, 2),
+            'market_cap': info.get('marketCap', 0),
+            '52_week_high': round(info.get('fiftyTwoWeekHigh', 0) or 0, 2),
+            '52_week_low': round(info.get('fiftyTwoWeekLow', 0) or 0, 2),
+            
+            # Additional info
+            'beta': round(info.get('beta', 0) or 0, 2),
+            'payout_ratio': round((info.get('payoutRatio', 0) or 0) * 100, 2),
+        }
+        
+        # Cache the result
+        _corporate_cache[symbol] = {
+            'data': corporate_data,
+            'timestamp': time.time()
+        }
+        
+        return corporate_data
+        
+    except Exception as e:
+        print(f"Error fetching corporate actions for {symbol}: {e}")
+        return {
+            'symbol': symbol,
+            'company_name': symbol,
+            'error': str(e),
+            'dividend_history': [],
+            'split_history': []
+        }
+
+
 def get_stock_info(symbol):
     """Get detailed stock information"""
     try:

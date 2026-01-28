@@ -203,8 +203,25 @@ class PortfolioManager {
         const id = row.dataset.holdingId;
         const symbol = row.querySelector('.symbol').textContent;
 
+        // Get all holding IDs for this consolidated row
+        let holdingIds = [id];
+        try {
+            const idsAttr = row.dataset.holdingIds;
+            if (idsAttr) {
+                holdingIds = JSON.parse(idsAttr);
+            }
+        } catch (e) {
+            // Fallback to single ID if parsing fails
+            console.log('Using single ID fallback');
+        }
+
+        const lotCount = holdingIds.length;
+        const confirmMessage = lotCount > 1
+            ? `Are you sure you want to remove all ${lotCount} lots of ${symbol} from your portfolio?`
+            : `Are you sure you want to remove ${symbol} from your portfolio?`;
+
         // Show confirmation
-        if (!confirm(`Are you sure you want to remove ${symbol} from your portfolio?`)) {
+        if (!confirm(confirmMessage)) {
             return;
         }
 
@@ -212,20 +229,36 @@ class PortfolioManager {
         row.classList.add('deleting');
 
         try {
-            const response = await fetch(`/portfolio/api/holdings/${id}`, {
-                method: 'DELETE'
-            });
+            // Delete all lots for this holding
+            let deleteSuccess = true;
+            let lastMessage = '';
 
-            const data = await response.json();
+            for (const holdingId of holdingIds) {
+                const response = await fetch(`/portfolio/api/holdings/${holdingId}`, {
+                    method: 'DELETE'
+                });
 
-            if (data.success) {
+                const data = await response.json();
+
+                if (!data.success) {
+                    deleteSuccess = false;
+                    lastMessage = data.error || 'Failed to delete holding';
+                    break;
+                }
+                lastMessage = data.message;
+            }
+
+            if (deleteSuccess) {
                 // Fade out and remove row
                 row.style.opacity = '0';
                 row.style.transform = 'translateX(-20px)';
 
                 setTimeout(() => {
                     row.remove();
-                    this.showMessage(data.message, 'success');
+                    const message = lotCount > 1
+                        ? `All ${lotCount} lots of ${symbol} removed from your portfolio`
+                        : lastMessage;
+                    this.showMessage(message, 'success');
                     this.refreshPortfolioTotals();
 
                     // Check if portfolio is empty
@@ -235,7 +268,7 @@ class PortfolioManager {
                     }
                 }, 300);
             } else {
-                this.showMessage(data.error || 'Failed to delete holding', 'error');
+                this.showMessage(lastMessage, 'error');
                 row.classList.remove('deleting');
             }
         } catch (error) {

@@ -13,12 +13,44 @@ portfolio_bp = Blueprint('portfolio', __name__, url_prefix='/portfolio')
 def index():
     holdings = Holding.query.filter_by(user_id=current_user.id).all()
     
-    # Calculate portfolio stats
-    total_invested = sum(h.quantity * h.buy_price for h in holdings)
+    # Consolidate holdings by symbol (combine multiple purchases of same stock)
+    consolidated = {}
+    for h in holdings:
+        symbol = h.symbol
+        if symbol not in consolidated:
+            consolidated[symbol] = {
+                'ids': [h.id],
+                'symbol': symbol,
+                'company_name': h.company_name,
+                'quantity': h.quantity,
+                'total_cost': h.quantity * h.buy_price,
+                'sector': h.sector,
+                'earliest_buy_date': h.buy_date,
+            }
+        else:
+            consolidated[symbol]['ids'].append(h.id)
+            consolidated[symbol]['quantity'] += h.quantity
+            consolidated[symbol]['total_cost'] += h.quantity * h.buy_price
+            # Keep the earliest buy date
+            if h.buy_date < consolidated[symbol]['earliest_buy_date']:
+                consolidated[symbol]['earliest_buy_date'] = h.buy_date
+            # Update company name if empty
+            if not consolidated[symbol]['company_name'] and h.company_name:
+                consolidated[symbol]['company_name'] = h.company_name
+            # Update sector if empty
+            if not consolidated[symbol]['sector'] and h.sector:
+                consolidated[symbol]['sector'] = h.sector
+    
+    # Calculate weighted average buy price for each consolidated holding
+    for symbol, data in consolidated.items():
+        data['avg_buy_price'] = data['total_cost'] / data['quantity'] if data['quantity'] > 0 else 0
+    
+    # Calculate portfolio stats using consolidated data
+    total_invested = sum(data['total_cost'] for data in consolidated.values())
     
     # Fetch current prices and dividend info
     from services.stock_service import get_current_prices, get_dividend_info
-    symbols = [h.symbol for h in holdings]
+    symbols = list(consolidated.keys())
     current_prices = get_current_prices(symbols)
     dividend_info = get_dividend_info(symbols)
     
@@ -26,10 +58,10 @@ def index():
     total_current = 0
     total_dividend = 0
     
-    for h in holdings:
+    for symbol, data in consolidated.items():
         # Get price data with currency info
-        price_data = current_prices.get(h.symbol, {
-            'price': h.buy_price,
+        price_data = current_prices.get(symbol, {
+            'price': data['avg_buy_price'],
             'currency': '₹',
             'currency_code': 'INR',
             'market': 'IN'
@@ -38,32 +70,35 @@ def index():
         current_price = price_data['price'] if isinstance(price_data, dict) else price_data
         currency = price_data.get('currency', '₹') if isinstance(price_data, dict) else '₹'
         
-        current_value = h.quantity * current_price
-        gain_loss = current_value - (h.quantity * h.buy_price)
-        gain_loss_pct = ((current_price - h.buy_price) / h.buy_price) * 100 if h.buy_price > 0 else 0
+        current_value = data['quantity'] * current_price
+        gain_loss = current_value - data['total_cost']
+        gain_loss_pct = ((current_price - data['avg_buy_price']) / data['avg_buy_price']) * 100 if data['avg_buy_price'] > 0 else 0
         
         # Calculate dividend earned (quantity × annual dividend per share)
-        dividend_per_share = dividend_info.get(h.symbol, 0)
-        dividend_earned = h.quantity * dividend_per_share
+        dividend_per_share = dividend_info.get(symbol, 0)
+        dividend_earned = data['quantity'] * dividend_per_share
         total_dividend += dividend_earned
         
         total_current += current_value
         holdings_data.append({
-            'id': h.id,
-            'symbol': h.symbol,
-            'company_name': h.company_name,
-            'quantity': h.quantity,
-            'buy_price': h.buy_price,
+            'ids': data['ids'],  # List of all holding IDs for this symbol
+            'id': data['ids'][0],  # Primary ID (first holding)
+            'symbol': symbol,
+            'company_name': data['company_name'],
+            'quantity': data['quantity'],
+            'buy_price': data['avg_buy_price'],  # Weighted average price
+            'total_invested': data['total_cost'],
             'current_price': current_price,
             'current_value': current_value,
             'gain_loss': gain_loss,
             'gain_loss_pct': gain_loss_pct,
-            'sector': h.sector,
-            'buy_date': h.buy_date,
+            'sector': data['sector'],
+            'buy_date': data['earliest_buy_date'],  # Earliest buy date
             'currency': currency,
             'market': price_data.get('market', 'IN') if isinstance(price_data, dict) else 'IN',
             'dividend_per_share': dividend_per_share,
-            'dividend_earned': dividend_earned
+            'dividend_earned': dividend_earned,
+            'lot_count': len(data['ids'])  # Number of separate lots
         })
     
     # Sector distribution
@@ -315,3 +350,24 @@ def delete_stock(id):
     
     flash(f'{symbol} removed from your portfolio', 'success')
     return redirect(url_for('portfolio.index'))
+
+
+@portfolio_bp.route('/api/corporate-actions/<symbol>')
+@login_required
+def get_corporate_actions_api(symbol):
+    """Get corporate actions for a stock (dividends, splits, bonus, etc.)"""
+    try:
+        from services.stock_service import get_corporate_actions
+        
+        data = get_corporate_actions(symbol)
+        
+        return jsonify({
+            'success': True,
+            'data': data
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500

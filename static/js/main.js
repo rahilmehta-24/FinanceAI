@@ -10,13 +10,50 @@ document.addEventListener('DOMContentLoaded', function () {
         }, 5000);
     });
 
-    // Mobile sidebar toggle
-    const sidebarToggle = document.getElementById('sidebarToggle');
+    // Sidebar collapse toggle
     const sidebar = document.querySelector('.sidebar');
+    const appLayout = document.querySelector('.app-layout');
 
-    if (sidebarToggle && sidebar) {
-        sidebarToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('open');
+    if (sidebar && appLayout) {
+        // Create toggle button if not exists
+        let toggleBtn = sidebar.querySelector('.sidebar-toggle');
+        if (!toggleBtn) {
+            toggleBtn = document.createElement('button');
+            toggleBtn.className = 'sidebar-toggle';
+            toggleBtn.setAttribute('aria-label', 'Toggle sidebar');
+            toggleBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                </svg>
+            `;
+            sidebar.insertBefore(toggleBtn, sidebar.firstChild);
+        }
+
+        // Add data-tooltip attributes to nav items for collapsed state
+        const navItems = sidebar.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+            const label = item.querySelector('.nav-label');
+            if (label) {
+                item.setAttribute('data-tooltip', label.textContent.trim());
+            }
+        });
+
+        // Restore collapsed state from localStorage
+        const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+        if (isCollapsed) {
+            sidebar.classList.add('collapsed');
+            appLayout.classList.add('sidebar-collapsed');
+        }
+
+        // Toggle handler
+        toggleBtn.addEventListener('click', () => {
+            const willCollapse = !sidebar.classList.contains('collapsed');
+
+            sidebar.classList.toggle('collapsed');
+            appLayout.classList.toggle('sidebar-collapsed');
+
+            // Save state
+            localStorage.setItem('sidebarCollapsed', willCollapse);
         });
     }
 

@@ -105,26 +105,37 @@
                                 <th>Symbol</th>
                                 <th>Company</th>
                                 <th>Qty</th>
-                                <th>Buy Price</th>
+                                <th>Avg. Buy Price</th>
                                 <th>Current Price</th>
+                                <th>Invested</th>
                                 <th>Value</th>
                                 <th>Gain/Loss</th>
                                 <th>Dividend</th>
-                                <th>Buy Date</th>
+                                <th>First Buy</th>
                                 <th>Sector</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for h in holdings %}
-                            <tr data-holding-id="{{ h.id }}">
+                            <tr data-holding-id="{{ h.id }}" data-holding-ids="{{ h.ids | tojson | e }}">
                                 <td>
                                     <span class="symbol-badge symbol">{{ h.symbol }}</span>
+                                    {% if h.lot_count > 1 %}
+                                    <span class="lot-badge" title="{{ h.lot_count }} separate purchases combined">
+                                        {{ h.lot_count }} lots
+                                    </span>
+                                    {% endif %}
                                 </td>
-                                <td class="company-name">{{ h.company_name or '-' }}</td>
-                                <td class="quantity">{{ h.quantity }}</td>
+                                <td class="company-name clickable" data-symbol="{{ h.symbol }}"
+                                    title="Click for corporate actions">
+                                    {{ h.company_name or '-' }}
+                                </td>
+                                <td class="quantity">{{ "%.2f"|format(h.quantity) if h.quantity != h.quantity|int else
+                                    h.quantity|int }}</td>
                                 <td class="buy-price">₹{{ "%.2f"|format(h.buy_price) }}</td>
                                 <td class="current-price">₹{{ "%.2f"|format(h.current_price) }}</td>
+                                <td class="total-invested">₹{{ "%.2f"|format(h.total_invested) }}</td>
                                 <td class="current-value">₹{{ "%.2f"|format(h.current_value) }}</td>
                                 <td
                                     class="gain-loss {% if h.gain_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
@@ -139,7 +150,7 @@
                                 <td class="actions">
                                     <button class="btn btn-ghost btn-sm btn-edit" title="Edit">📝</button>
                                     <button class="btn btn-ghost btn-sm btn-delete text-danger"
-                                        title="Delete">🗑️</button>
+                                        title="Delete all {{ h.lot_count }} lots">🗑️</button>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -175,6 +186,25 @@
         {% endif %}
     </main>
 </div>
+
+<!-- Corporate Actions Modal -->
+<div id="corporateActionsModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content corporate-modal">
+        <div class="modal-header">
+            <div>
+                <h2 id="modalCompanyName">Loading...</h2>
+                <p id="modalSymbol" class="modal-subtitle"></p>
+            </div>
+            <button class="modal-close" onclick="closeCorporateModal()">×</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+            <div class="modal-loading">
+                <div class="spinner"></div>
+                <p>Fetching corporate actions...</p>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_css %}
@@ -193,6 +223,20 @@
         border-radius: 4px;
         color: #e2e8f0;
         font-size: 0.9rem;
+    }
+
+    /* Lot badge for consolidated holdings */
+    .lot-badge {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 2px 6px;
+        background: linear-gradient(135deg, rgba(102, 126, 234, 0.3), rgba(118, 75, 162, 0.3));
+        border: 1px solid rgba(102, 126, 234, 0.4);
+        border-radius: 12px;
+        font-size: 0.7rem;
+        font-weight: 500;
+        color: #a5b4fc;
+        cursor: help;
     }
 
     tr.editing .edit-input:focus {
@@ -288,6 +332,299 @@
     .btn-cancel:hover {
         background-color: rgba(239, 68, 68, 0.2);
     }
+
+    /* Clickable company name */
+    .company-name.clickable {
+        cursor: pointer;
+        color: #667eea;
+        text-decoration: underline;
+        text-decoration-style: dotted;
+        text-underline-offset: 3px;
+        transition: all 0.2s ease;
+    }
+
+    .company-name.clickable:hover {
+        color: #818cf8;
+        text-decoration-style: solid;
+    }
+
+    /* Modal styles */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(4px);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+
+        to {
+            opacity: 1;
+        }
+    }
+
+    .modal-content {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        max-width: 700px;
+        width: 100%;
+        max-height: 85vh;
+        overflow-y: auto;
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+        animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        padding: 24px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(102, 126, 234, 0.1);
+    }
+
+    .modal-header h2 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0;
+        color: #fff;
+    }
+
+    .modal-subtitle {
+        color: #a0aec0;
+        font-size: 0.875rem;
+        margin-top: 4px;
+    }
+
+    .modal-close {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: #a0aec0;
+        font-size: 24px;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+    }
+
+    .modal-close:hover {
+        background: rgba(239, 68, 68, 0.3);
+        color: #ef4444;
+    }
+
+    .modal-body {
+        padding: 24px;
+    }
+
+    .modal-loading {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(102, 126, 234, 0.2);
+        border-top-color: #667eea;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .corporate-section {
+        margin-bottom: 24px;
+    }
+
+    .corporate-section:last-child {
+        margin-bottom: 0;
+    }
+
+    .corporate-section h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #667eea;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .corporate-section h3::before {
+        content: '';
+        width: 4px;
+        height: 18px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        border-radius: 2px;
+    }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+    }
+
+    .info-item {
+        background: rgba(255, 255, 255, 0.03);
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .info-label {
+        font-size: 0.75rem;
+        color: #718096;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+    }
+
+    .info-value {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #e2e8f0;
+    }
+
+    .info-value.positive {
+        color: #48bb78;
+    }
+
+    .info-value.negative {
+        color: #f56565;
+    }
+
+    .history-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.875rem;
+    }
+
+    .history-table th {
+        text-align: left;
+        color: #718096;
+        font-weight: 500;
+        padding: 8px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .history-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        color: #e2e8f0;
+    }
+
+    .history-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .no-data {
+        color: #718096;
+        font-style: italic;
+        padding: 16px;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 8px;
+    }
+
+    .section-divider {
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.3), transparent);
+        margin: 20px 0;
+    }
+
+    /* KPI Tooltip styles */
+    .info-item {
+        position: relative;
+        cursor: help;
+    }
+
+    .info-item[data-tooltip]::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        font-weight: 400;
+        line-height: 1.5;
+        white-space: normal;
+        width: 220px;
+        text-align: left;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.2s ease;
+        pointer-events: none;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(102, 126, 234, 0.3);
+        z-index: 100;
+    }
+
+    .info-item[data-tooltip]::before {
+        content: '';
+        position: absolute;
+        bottom: calc(100% + 2px);
+        left: 50%;
+        transform: translateX(-50%);
+        border: 6px solid transparent;
+        border-top-color: #0f172a;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.2s ease;
+        z-index: 101;
+    }
+
+    .info-item[data-tooltip]:hover::after,
+    .info-item[data-tooltip]:hover::before {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .info-label {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .info-label::after {
+        content: 'ℹ️';
+        font-size: 0.65rem;
+        opacity: 0.6;
+    }
 </style>
 {% endblock %}
 
@@ -337,4 +674,250 @@
     });
 </script>
 {% endif %}
+
+<!-- Corporate Actions Modal Script -->
+<script>
+    // Make company names clickable
+    document.querySelectorAll('.company-name.clickable').forEach(cell => {
+        cell.addEventListener('click', function () {
+            const symbol = this.dataset.symbol;
+            const companyName = this.textContent.trim();
+            openCorporateModal(symbol, companyName);
+        });
+    });
+
+    // Open modal and fetch data
+    async function openCorporateModal(symbol, companyName) {
+        const modal = document.getElementById('corporateActionsModal');
+        const modalBody = document.getElementById('modalBody');
+        const modalCompanyName = document.getElementById('modalCompanyName');
+        const modalSymbol = document.getElementById('modalSymbol');
+
+        // Show modal with loading state
+        modal.style.display = 'flex';
+        modalCompanyName.textContent = companyName || 'Loading...';
+        modalSymbol.textContent = symbol;
+        modalBody.innerHTML = `
+        <div class="modal-loading">
+            <div class="spinner"></div>
+            <p>Fetching corporate actions...</p>
+        </div>
+    `;
+
+        // Prevent body scroll
+        document.body.style.overflow = 'hidden';
+
+        try {
+            const response = await fetch(`/portfolio/api/corporate-actions/${symbol}`);
+            const result = await response.json();
+
+            if (result.success) {
+                renderCorporateActions(result.data);
+            } else {
+                modalBody.innerHTML = `
+                <div class="no-data">
+                    <p>Unable to fetch corporate actions: ${result.error || 'Unknown error'}</p>
+                </div>
+            `;
+            }
+        } catch (error) {
+            modalBody.innerHTML = `
+            <div class="no-data">
+                <p>Network error. Please try again.</p>
+            </div>
+        `;
+        }
+    }
+
+    // Render corporate actions data
+    function renderCorporateActions(data) {
+        const modalBody = document.getElementById('modalBody');
+        const modalCompanyName = document.getElementById('modalCompanyName');
+
+        // Update company name if available
+        if (data.company_name) {
+            modalCompanyName.textContent = data.company_name;
+        }
+
+        // Format market cap
+        const formatMarketCap = (val) => {
+            if (!val) return 'N/A';
+            if (val >= 1e12) return `₹${(val / 1e12).toFixed(2)}T`;
+            if (val >= 1e9) return `₹${(val / 1e9).toFixed(2)}B`;
+            if (val >= 1e7) return `₹${(val / 1e7).toFixed(2)}Cr`;
+            if (val >= 1e5) return `₹${(val / 1e5).toFixed(2)}L`;
+            return `₹${val.toLocaleString()}`;
+        };
+
+        // Format date
+        const formatDate = (dateStr) => {
+            if (!dateStr) return 'N/A';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        };
+
+        let html = '';
+
+        // Company Overview
+        html += `
+        <div class="corporate-section">
+            <h3>Company Overview</h3>
+            <div class="info-grid">
+                <div class="info-item" data-tooltip="The broad category of business the company operates in, such as Technology, Healthcare, or Financial Services.">
+                    <div class="info-label">Sector</div>
+                    <div class="info-value">${data.sector || 'N/A'}</div>
+                </div>
+                <div class="info-item" data-tooltip="The specific industry within the sector. For example, within Technology, it could be Software, Semiconductors, or IT Services.">
+                    <div class="info-label">Industry</div>
+                    <div class="info-value">${data.industry || 'N/A'}</div>
+                </div>
+                <div class="info-item" data-tooltip="Total market value of all outstanding shares. Calculated as Share Price × Total Shares. Large cap: >₹20,000 Cr, Mid cap: ₹5,000-20,000 Cr, Small cap: <₹5,000 Cr.">
+                    <div class="info-label">Market Cap</div>
+                    <div class="info-value">${formatMarketCap(data.market_cap)}</div>
+                </div>
+                <div class="info-item" data-tooltip="The lowest and highest stock price over the past 52 weeks. Helps assess if the stock is trading near its highs or lows.">
+                    <div class="info-label">52-Week Range</div>
+                    <div class="info-value">₹${data['52_week_low'] || 0} - ₹${data['52_week_high'] || 0}</div>
+                </div>
+            </div>
+        </div>
+        <div class="section-divider"></div>
+    `;
+
+        // Dividend Information
+        html += `
+        <div class="corporate-section">
+            <h3>💰 Dividend Information</h3>
+            <div class="info-grid">
+                <div class="info-item" data-tooltip="The total dividend amount paid per share annually. Higher dividend indicates the company shares more profits with shareholders.">
+                    <div class="info-label">Annual Dividend</div>
+                    <div class="info-value positive">₹${data.dividend_rate || 0}</div>
+                </div>
+                <div class="info-item" data-tooltip="Annual dividend as a percentage of current stock price. Formula: (Annual Dividend ÷ Stock Price) × 100. Higher yield means better dividend income.">
+                    <div class="info-label">Dividend Yield</div>
+                    <div class="info-value positive">${data.dividend_yield || 0}%</div>
+                </div>
+                <div class="info-item" data-tooltip="The date on or after which a buyer won't receive the upcoming dividend. Buy before this date to receive the dividend.">
+                    <div class="info-label">Ex-Dividend Date</div>
+                    <div class="info-value">${formatDate(data.ex_dividend_date)}</div>
+                </div>
+                <div class="info-item" data-tooltip="The most recent dividend amount paid per share. Compare with historical dividends to see if the company is increasing payouts.">
+                    <div class="info-label">Last Dividend</div>
+                    <div class="info-value">₹${data.last_dividend_value || 0}</div>
+                </div>
+                <div class="info-item" data-tooltip="Percentage of earnings paid as dividends. Formula: (Dividends ÷ Net Income) × 100. Lower ratio means more earnings retained for growth.">
+                    <div class="info-label">Payout Ratio</div>
+                    <div class="info-value">${data.payout_ratio || 0}%</div>
+                </div>
+            </div>
+    `;
+
+        // Dividend History
+        if (data.dividend_history && data.dividend_history.length > 0) {
+            html += `
+            <h4 style="margin-top: 16px; font-size: 0.9rem; color: #a0aec0;">Recent Dividend History</h4>
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Amount per Share</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.dividend_history.map(d => `
+                        <tr>
+                            <td>${formatDate(d.date)}</td>
+                            <td class="positive">₹${d.amount}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        } else {
+            html += `<div class="no-data">No recent dividend history available</div>`;
+        }
+
+        html += `</div><div class="section-divider"></div>`;
+
+        // Stock Splits / Bonus Issues
+        html += `
+        <div class="corporate-section">
+            <h3>📊 Stock Splits & Bonus Issues</h3>
+            <p style="color: #718096; font-size: 0.8rem; margin-bottom: 12px;">Stock splits reduce share price proportionally while bonus issues give free additional shares. Both increase the number of shares without changing total investment value.</p>
+    `;
+
+        if (data.split_history && data.split_history.length > 0) {
+            html += `
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Split/Bonus Ratio</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.split_history.map(s => `
+                        <tr>
+                            <td>${formatDate(s.date)}</td>
+                            <td>${s.ratio}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        } else {
+            html += `<div class="no-data">No stock splits or bonus issues on record</div>`;
+        }
+
+        html += `</div><div class="section-divider"></div>`;
+
+        // Key Financial Ratios
+        html += `
+        <div class="corporate-section">
+            <h3>📈 Key Financials</h3>
+            <div class="info-grid">
+                <div class="info-item" data-tooltip="Price-to-Earnings Ratio. Formula: Share Price ÷ Earnings Per Share. Lower P/E may indicate undervaluation. Compare with industry peers for context.">
+                    <div class="info-label">P/E Ratio</div>
+                    <div class="info-value">${data.pe_ratio || 'N/A'}</div>
+                </div>
+                <div class="info-item" data-tooltip="Earnings Per Share. The profit earned for each outstanding share. Formula: Net Income ÷ Total Shares. Higher EPS indicates better profitability.">
+                    <div class="info-label">EPS</div>
+                    <div class="info-value">₹${data.eps || 0}</div>
+                </div>
+                <div class="info-item" data-tooltip="Net asset value per share. Formula: (Total Assets - Total Liabilities) ÷ Shares. If stock price < book value, stock may be undervalued.">
+                    <div class="info-label">Book Value</div>
+                    <div class="info-value">₹${data.book_value || 0}</div>
+                </div>
+                <div class="info-item" data-tooltip="Measures stock volatility relative to the market. Beta = 1 means same as market. Beta > 1 means more volatile, Beta < 1 means less volatile.">
+                    <div class="info-label">Beta</div>
+                    <div class="info-value">${data.beta || 'N/A'}</div>
+                </div>
+            </div>
+        </div>
+    `;
+
+        modalBody.innerHTML = html;
+    }
+
+    // Close modal
+    function closeCorporateModal() {
+        const modal = document.getElementById('corporateActionsModal');
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+
+    // Close modal on overlay click
+    document.getElementById('corporateActionsModal')?.addEventListener('click', function (e) {
+        if (e.target === this) {
+            closeCorporateModal();
+        }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            closeCorporateModal();
+        }
+    });
+</script>
 {% endblock %}
