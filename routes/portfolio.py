@@ -470,6 +470,128 @@ def get_performance_history_api():
         }), 500
 
 
+@portfolio_bp.route('/api/ai-review')
+@login_required
+def get_ai_review_api():
+    """Get AI-powered portfolio review using Gemini"""
+    try:
+        from services.ai_service import get_portfolio_review_gemini
+        from services.stock_service import get_current_prices, get_dividend_info
+        
+        # Get user's holdings
+        holdings = Holding.query.filter_by(user_id=current_user.id).all()
+        
+        if not holdings:
+            return jsonify({
+                'success': False,
+                'error': 'No holdings found. Add stocks to your portfolio first.'
+            })
+        
+        # Consolidate holdings by symbol
+        consolidated = {}
+        for h in holdings:
+            symbol = h.symbol
+            if symbol not in consolidated:
+                consolidated[symbol] = {
+                    'symbol': symbol,
+                    'company_name': h.company_name,
+                    'quantity': h.quantity,
+                    'total_cost': h.quantity * h.buy_price,
+                    'sector': h.sector,
+                }
+            else:
+                consolidated[symbol]['quantity'] += h.quantity
+                consolidated[symbol]['total_cost'] += h.quantity * h.buy_price
+        
+        # Fetch current prices
+        symbols = list(consolidated.keys())
+        current_prices = get_current_prices(symbols)
+        
+        # Build holdings data
+        holdings_data = []
+        total_invested = 0
+        total_current = 0
+        sector_data = {}
+        
+        for symbol, data in consolidated.items():
+            price_data = current_prices.get(symbol, {'price': 0})
+            current_price = price_data['price'] if isinstance(price_data, dict) else price_data
+            current_value = data['quantity'] * current_price
+            gain_loss = current_value - data['total_cost']
+            
+            total_invested += data['total_cost']
+            total_current += current_value
+            
+            sector = data['sector'] or 'Other'
+            sector_data[sector] = sector_data.get(sector, 0) + current_value
+            
+            holdings_data.append({
+                'symbol': symbol,
+                'company_name': data['company_name'],
+                'quantity': data['quantity'],
+                'total_invested': data['total_cost'],
+                'current_value': current_value,
+                'gain_loss': gain_loss,
+                'sector': sector
+            })
+        
+        portfolio_stats = {
+            'total_invested': total_invested,
+            'total_current': total_current,
+            'total_gain_loss': total_current - total_invested,
+            'sector_data': sector_data
+        }
+        
+        # Get AI review
+        result = get_portfolio_review_gemini(holdings_data, portfolio_stats)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@portfolio_bp.route('/api/news')
+@login_required
+def get_portfolio_news_api():
+    """Get news for portfolio holdings"""
+    try:
+        from services.news_service import get_portfolio_news, get_market_news
+        
+        # Get user's holdings
+        holdings = Holding.query.filter_by(user_id=current_user.id).all()
+        
+        if not holdings:
+            # Return market news if no holdings
+            news = get_market_news(10)
+            return jsonify({
+                'success': True,
+                'data': news,
+                'source': 'market'
+            })
+        
+        # Get unique symbols
+        symbols = list(set(h.symbol for h in holdings))
+        
+        # Fetch news
+        news = get_portfolio_news(symbols, limit_per_stock=3, total_limit=15)
+        
+        return jsonify({
+            'success': True,
+            'data': news,
+            'source': 'portfolio'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @portfolio_bp.route('/export/csv')
 @login_required
 def export_csv():

@@ -831,3 +831,104 @@ def clear_price_cache():
     """Clear the price cache - useful for forcing fresh data"""
     global _price_cache
     _price_cache = {}
+
+
+# Popular Indian stocks for screener
+NIFTY_50_STOCKS = [
+    'RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS',
+    'HINDUNILVR.NS', 'KOTAKBANK.NS', 'SBIN.NS', 'BHARTIARTL.NS', 'ITC.NS',
+    'BAJFINANCE.NS', 'LT.NS', 'AXISBANK.NS', 'ASIANPAINT.NS', 'MARUTI.NS',
+    'HCLTECH.NS', 'SUNPHARMA.NS', 'TITAN.NS', 'ULTRACEMCO.NS', 'WIPRO.NS',
+    'NESTLEIND.NS', 'POWERGRID.NS', 'NTPC.NS', 'ONGC.NS', 'JSWSTEEL.NS',
+    'TATASTEEL.NS', 'ADANIPORTS.NS', 'TECHM.NS', 'INDUSINDBK.NS', 'HINDALCO.NS'
+]
+
+
+def screen_stocks(filters=None):
+    """Screen stocks based on filter criteria
+    
+    Args:
+        filters: Dict with optional keys:
+            - min_pe, max_pe: P/E ratio range
+            - min_market_cap: Minimum market cap in Cr
+            - min_dividend_yield: Minimum dividend yield %
+            - sector: Sector filter
+            
+    Returns:
+        list: List of stocks matching criteria
+    """
+    filters = filters or {}
+    
+    results = []
+    
+    for symbol in NIFTY_50_STOCKS[:20]:  # Limit to 20 for performance
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            fast_info = ticker.fast_info
+            
+            # Get basic data
+            current_price = fast_info.last_price if hasattr(fast_info, 'last_price') else 0
+            pe_ratio = info.get('trailingPE') or info.get('forwardPE') or 0
+            market_cap = info.get('marketCap', 0)
+            market_cap_cr = market_cap / 10000000 if market_cap else 0  # Convert to Crores
+            dividend_yield = (info.get('dividendYield') or 0) * 100  # Convert to %
+            sector = info.get('sector', 'Unknown')
+            fifty_two_week_high = info.get('fiftyTwoWeekHigh', 0)
+            fifty_two_week_low = info.get('fiftyTwoWeekLow', 0)
+            
+            # Apply filters
+            if filters.get('min_pe') and pe_ratio < filters['min_pe']:
+                continue
+            if filters.get('max_pe') and pe_ratio > filters['max_pe']:
+                continue
+            if filters.get('min_market_cap') and market_cap_cr < filters['min_market_cap']:
+                continue
+            if filters.get('min_dividend_yield') and dividend_yield < filters['min_dividend_yield']:
+                continue
+            if filters.get('sector') and filters['sector'] != 'All' and sector != filters['sector']:
+                continue
+            
+            # Calculate distance from 52-week high/low
+            pct_from_high = ((fifty_two_week_high - current_price) / fifty_two_week_high * 100) if fifty_two_week_high else 0
+            pct_from_low = ((current_price - fifty_two_week_low) / fifty_two_week_low * 100) if fifty_two_week_low else 0
+            
+            results.append({
+                'symbol': symbol,
+                'name': info.get('longName', info.get('shortName', symbol.replace('.NS', ''))),
+                'price': round(current_price, 2),
+                'pe_ratio': round(pe_ratio, 2) if pe_ratio else 'N/A',
+                'market_cap_cr': round(market_cap_cr, 0),
+                'dividend_yield': round(dividend_yield, 2),
+                'sector': sector,
+                'fifty_two_week_high': round(fifty_two_week_high, 2),
+                'fifty_two_week_low': round(fifty_two_week_low, 2),
+                'pct_from_high': round(pct_from_high, 1),
+                'pct_from_low': round(pct_from_low, 1)
+            })
+            
+        except Exception as e:
+            print(f"Error screening {symbol}: {e}")
+            continue
+    
+    # Sort by market cap by default
+    results.sort(key=lambda x: x.get('market_cap_cr', 0), reverse=True)
+    
+    return results
+
+
+def get_screener_sectors():
+    """Get unique sectors from screened stocks"""
+    return [
+        'All',
+        'Technology',
+        'Financial Services',
+        'Consumer Defensive',
+        'Energy',
+        'Basic Materials',
+        'Healthcare',
+        'Communication Services',
+        'Consumer Cyclical',
+        'Industrials',
+        'Utilities'
+    ]

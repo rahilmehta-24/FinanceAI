@@ -1,6 +1,158 @@
+"""
+AI Service for portfolio analysis - includes both simulated and Gemini-powered features
+"""
+import os
 import numpy as np
-from services.stock_service import STOCK_DATA
 import random
+import re
+from services.stock_service import STOCK_DATA
+
+# Gemini API integration
+try:
+    import google.generativeai as genai
+    from dotenv import load_dotenv
+    load_dotenv()
+    GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+    GEMINI_AVAILABLE = bool(GEMINI_API_KEY)
+except ImportError:
+    GEMINI_AVAILABLE = False
+    GEMINI_API_KEY = None
+
+
+def get_gemini_model():
+    """Get configured Gemini model"""
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY not found in environment variables")
+    
+    genai.configure(api_key=GEMINI_API_KEY)
+    return genai.GenerativeModel('gemini-flash-latest')
+
+
+def get_portfolio_review_gemini(holdings_data, portfolio_stats):
+    """Generate AI portfolio review using Gemini
+    
+    Args:
+        holdings_data: List of holdings with symbol, company, quantity, value, gain_loss, sector
+        portfolio_stats: Dict with total_invested, total_current, total_gain_loss, sector_data
+        
+    Returns:
+        dict: AI review with summary, strengths, risks, recommendations
+    """
+    if not GEMINI_AVAILABLE:
+        return {
+            'success': False,
+            'error': 'Gemini API not configured. Please add GEMINI_API_KEY to .env file.'
+        }
+    
+    try:
+        model = get_gemini_model()
+        
+        # Build portfolio summary for the prompt
+        holdings_summary = []
+        for h in holdings_data:
+            gain_pct = ((h.get('gain_loss', 0) / h.get('total_invested', 1)) * 100) if h.get('total_invested', 0) > 0 else 0
+            holdings_summary.append(
+                f"- {h.get('company_name', h.get('symbol'))}: "
+                f"₹{h.get('current_value', 0):,.0f} ({gain_pct:+.1f}%), "
+                f"Sector: {h.get('sector', 'Unknown')}"
+            )
+        
+        holdings_text = '\n'.join(holdings_summary[:20])  # Limit to 20 stocks
+        
+        sector_text = '\n'.join([
+            f"- {sector}: ₹{value:,.0f}" 
+            for sector, value in (portfolio_stats.get('sector_data', {}) or {}).items()
+        ])
+        
+        total_return = 0
+        if portfolio_stats.get('total_invested', 0) > 0:
+            total_return = ((portfolio_stats.get('total_current', 0) - portfolio_stats.get('total_invested', 0)) / portfolio_stats.get('total_invested', 0)) * 100
+        
+        prompt = f"""You are a professional financial analyst and portfolio advisor. Analyze this Indian stock portfolio and provide a comprehensive, structured review.
+
+## Portfolio Data
+- Total Invested: ₹{portfolio_stats.get('total_invested', 0):,.2f}
+- Current Value: ₹{portfolio_stats.get('total_current', 0):,.2f}
+- Total Return: {total_return:+.2f}%
+- Number of Stocks: {len(holdings_data)}
+
+### Holdings Details:
+{holdings_text}
+
+### Sector Allocation:
+{sector_text}
+
+## Your Task
+Provide a high-quality analysis with these EXACT sections (use these exact headings):
+
+### Summary
+Write a 2-3 sentence overview of the portfolio's overall health and performance. Use professional language.
+
+### Strengths
+Identify 3-4 key strengths. Use bullet points. Focus on diversification, quality of stocks, or sector exposure.
+
+### Risks
+Identify 3-4 potential risks or areas of concern. Use bullet points. Highlight concentration risk, sector headwinds, or volatility.
+
+### Recommendations
+Provide 3-4 actionable, specific suggestions to optimize the portfolio for better risk-adjusted returns.
+
+### Formatting Guidelines:
+- Use **bold** for key terms and symbols.
+- Use ₹ for currency.
+- Keep the tone professional but accessible.
+- Each bullet point should be concise but insightful."""
+
+        response = model.generate_content(prompt)
+        
+        if response and response.text:
+            text = response.text
+            sections = {
+                'summary': '',
+                'strengths': '',
+                'risks': '',
+                'recommendations': '',
+                'raw': text
+            }
+            
+            # Parse sections
+            summary_match = re.search(r'###?\s*Summary\s*\n(.*?)(?=###|$)', text, re.DOTALL | re.IGNORECASE)
+            strengths_match = re.search(r'###?\s*Strengths\s*\n(.*?)(?=###|$)', text, re.DOTALL | re.IGNORECASE)
+            risks_match = re.search(r'###?\s*Risks\s*\n(.*?)(?=###|$)', text, re.DOTALL | re.IGNORECASE)
+            recommendations_match = re.search(r'###?\s*Recommendations\s*\n(.*?)(?=###|$)', text, re.DOTALL | re.IGNORECASE)
+            
+            if summary_match:
+                sections['summary'] = summary_match.group(1).strip()
+            if strengths_match:
+                sections['strengths'] = strengths_match.group(1).strip()
+            if risks_match:
+                sections['risks'] = risks_match.group(1).strip()
+            if recommendations_match:
+                sections['recommendations'] = recommendations_match.group(1).strip()
+            
+            return {
+                'success': True,
+                'review': sections
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'No response from AI'
+            }
+            
+    except ValueError as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+    except Exception as e:
+        print(f"Error generating portfolio review: {e}")
+        return {
+            'success': False,
+            'error': f'AI analysis failed: {str(e)}'
+        }
+
+
 
 def get_ai_recommendations():
     """

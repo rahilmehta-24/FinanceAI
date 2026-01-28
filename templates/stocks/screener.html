@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+
+{% block title %}Stock Screener - FinanceAI{% endblock %}
+
+{% block content %}
+<div class="container">
+    <header class="page-header">
+        <div>
+            <h1>🔍 Stock Screener</h1>
+            <p>Filter Nifty 50 stocks by fundamental criteria</p>
+        </div>
+    </header>
+
+    <main>
+        <!-- Filter Panel -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <h3>📊 Filters</h3>
+                <button class="btn btn-ghost btn-sm" onclick="resetFilters()">Reset</button>
+            </div>
+            <div class="card-body">
+                <div class="filter-grid">
+                    <div class="filter-group">
+                        <label>P/E Ratio Range</label>
+                        <div class="filter-row">
+                            <input type="number" id="minPE" placeholder="Min" class="filter-input">
+                            <span>to</span>
+                            <input type="number" id="maxPE" placeholder="Max" class="filter-input">
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <label>Min Market Cap (Cr)</label>
+                        <input type="number" id="minMarketCap" placeholder="e.g., 50000" class="filter-input">
+                    </div>
+                    <div class="filter-group">
+                        <label>Min Dividend Yield (%)</label>
+                        <input type="number" id="minDividend" step="0.1" placeholder="e.g., 1.0" class="filter-input">
+                    </div>
+                    <div class="filter-group">
+                        <label>Sector</label>
+                        <select id="sectorFilter" class="filter-input">
+                            {% for sector in sectors %}
+                            <option value="{{ sector }}">{{ sector }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="filter-actions">
+                    <button class="btn btn-primary" onclick="runScreener()">
+                        🔍 Screen Stocks
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="card">
+            <div class="card-header">
+                <h3>📋 Results</h3>
+                <span class="card-badge" id="resultCount">Click "Screen Stocks" to search</span>
+            </div>
+            <div class="card-body" id="resultsBody">
+                <div class="screener-placeholder">
+                    <div class="icon">📈</div>
+                    <p>Configure filters above and click "Screen Stocks" to find matching stocks</p>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<style>
+    .filter-card {
+        margin-bottom: 24px;
+    }
+
+    .filter-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 24px;
+        margin-bottom: 24px;
+    }
+
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .filter-group label {
+        font-size: 0.875rem;
+        color: #a0aec0;
+        font-weight: 500;
+    }
+
+    .filter-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .filter-row span {
+        color: #718096;
+    }
+
+    .filter-input {
+        flex: 1;
+        padding: 10px 14px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        color: #e2e8f0;
+        font-size: 0.9rem;
+    }
+
+    .filter-input:focus {
+        outline: none;
+        border-color: #667eea;
+        background: rgba(102, 126, 234, 0.1);
+    }
+
+    .filter-actions {
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .screener-placeholder {
+        text-align: center;
+        padding: 60px 20px;
+        color: #718096;
+    }
+
+    .screener-placeholder .icon {
+        font-size: 4rem;
+        margin-bottom: 16px;
+    }
+
+    .screener-loading {
+        text-align: center;
+        padding: 60px;
+    }
+
+    .screener-loading .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid rgba(102, 126, 234, 0.2);
+        border-top-color: #667eea;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .screener-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .screener-table th,
+    .screener-table td {
+        padding: 12px 16px;
+        text-align: left;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .screener-table th {
+        background: rgba(255, 255, 255, 0.02);
+        color: #a0aec0;
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+    }
+
+    .screener-table tr:hover {
+        background: rgba(102, 126, 234, 0.1);
+    }
+
+    .screener-table .stock-name {
+        font-weight: 600;
+        color: #e2e8f0;
+    }
+
+    .screener-table .stock-symbol {
+        font-size: 0.8rem;
+        color: #718096;
+    }
+
+    .screener-table .sector-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        background: rgba(102, 126, 234, 0.2);
+        border-radius: 4px;
+        font-size: 0.75rem;
+        color: #667eea;
+    }
+
+    .pct-from-high {
+        color: #ed8936;
+    }
+
+    .add-btn {
+        padding: 6px 12px;
+        background: rgba(72, 187, 120, 0.2);
+        border: none;
+        border-radius: 6px;
+        color: #48bb78;
+        cursor: pointer;
+        font-size: 0.8rem;
+        transition: all 0.2s;
+    }
+
+    .add-btn:hover {
+        background: #48bb78;
+        color: white;
+    }
+</style>
+
+<script>
+    async function runScreener() {
+        const resultsBody = document.getElementById('resultsBody');
+        const resultCount = document.getElementById('resultCount');
+
+        // Build query params
+        const params = new URLSearchParams();
+
+        const minPE = document.getElementById('minPE').value;
+        const maxPE = document.getElementById('maxPE').value;
+        const minMarketCap = document.getElementById('minMarketCap').value;
+        const minDividend = document.getElementById('minDividend').value;
+        const sector = document.getElementById('sectorFilter').value;
+
+        if (minPE) params.append('min_pe', minPE);
+        if (maxPE) params.append('max_pe', maxPE);
+        if (minMarketCap) params.append('min_market_cap', minMarketCap);
+        if (minDividend) params.append('min_dividend_yield', minDividend);
+        if (sector && sector !== 'All') params.append('sector', sector);
+
+        // Show loading
+        resultCount.textContent = 'Searching...';
+        resultsBody.innerHTML = `
+        <div class="screener-loading">
+            <div class="spinner"></div>
+            <p>Screening stocks...</p>
+            <small>This may take a few seconds</small>
+        </div>
+    `;
+
+        try {
+            const response = await fetch(`/stocks/api/screener?${params.toString()}`);
+            const result = await response.json();
+
+            if (result.success && result.data.length > 0) {
+                resultCount.textContent = `${result.count} stocks found`;
+
+                let html = `
+                <div class="table-container">
+                    <table class="screener-table">
+                        <thead>
+                            <tr>
+                                <th>Stock</th>
+                                <th>Price</th>
+                                <th>P/E</th>
+                                <th>Mkt Cap (Cr)</th>
+                                <th>Div Yield</th>
+                                <th>Sector</th>
+                                <th>From 52W High</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+                result.data.forEach(stock => {
+                    html += `
+                    <tr>
+                        <td>
+                            <div class="stock-name">${stock.name}</div>
+                            <div class="stock-symbol">${stock.symbol}</div>
+                        </td>
+                        <td>₹${stock.price.toLocaleString()}</td>
+                        <td>${stock.pe_ratio}</td>
+                        <td>₹${stock.market_cap_cr.toLocaleString()}</td>
+                        <td>${stock.dividend_yield}%</td>
+                        <td><span class="sector-badge">${stock.sector}</span></td>
+                        <td class="pct-from-high">-${stock.pct_from_high}%</td>
+                        <td>
+                            <a href="/portfolio/add?symbol=${stock.symbol}" class="add-btn">+ Add</a>
+                        </td>
+                    </tr>
+                `;
+                });
+
+                html += '</tbody></table></div>';
+                resultsBody.innerHTML = html;
+            } else {
+                resultCount.textContent = '0 stocks found';
+                resultsBody.innerHTML = `
+                <div class="screener-placeholder">
+                    <div class="icon">🔍</div>
+                    <p>No stocks match your criteria</p>
+                    <small>Try adjusting your filters</small>
+                </div>
+            `;
+            }
+        } catch (error) {
+            console.error('Error screening stocks:', error);
+            resultCount.textContent = 'Error';
+            resultsBody.innerHTML = `
+            <div class="screener-placeholder">
+                <div class="icon">⚠️</div>
+                <p>Error screening stocks</p>
+            </div>
+        `;
+        }
+    }
+
+    function resetFilters() {
+        document.getElementById('minPE').value = '';
+        document.getElementById('maxPE').value = '';
+        document.getElementById('minMarketCap').value = '';
+        document.getElementById('minDividend').value = '';
+        document.getElementById('sectorFilter').value = 'All';
+    }
+</script>
+{% endblock %}
