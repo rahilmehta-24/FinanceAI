@@ -238,6 +238,94 @@ def get_current_prices(symbols):
     return prices
 
 
+# Day change cache
+_day_change_cache = {}
+_day_change_cache_ttl = 300  # 5 minutes cache
+
+
+def get_day_changes(symbols):
+    """Get daily price change for given symbols
+    
+    Args:
+        symbols: List of stock symbols
+        
+    Returns:
+        dict: {symbol: {'current': float, 'previous_close': float, 'change': float, 'change_pct': float}}
+    """
+    changes = {}
+    
+    if not symbols:
+        return changes
+    
+    symbols_to_fetch = []
+    
+    # Check cache first
+    for symbol in symbols:
+        if symbol in _day_change_cache:
+            cached = _day_change_cache[symbol]
+            if time.time() - cached['timestamp'] < _day_change_cache_ttl:
+                changes[symbol] = cached['data']
+            else:
+                symbols_to_fetch.append(symbol)
+        else:
+            symbols_to_fetch.append(symbol)
+    
+    # Fetch remaining from API
+    if symbols_to_fetch:
+        try:
+            tickers = yf.Tickers(' '.join(symbols_to_fetch))
+            
+            for symbol in symbols_to_fetch:
+                try:
+                    ticker = tickers.tickers.get(symbol)
+                    if ticker:
+                        info = ticker.fast_info
+                        
+                        current_price = 0
+                        previous_close = 0
+                        
+                        if hasattr(info, 'last_price') and info.last_price:
+                            current_price = info.last_price
+                        elif hasattr(info, 'previous_close') and info.previous_close:
+                            current_price = info.previous_close
+                        
+                        if hasattr(info, 'previous_close') and info.previous_close:
+                            previous_close = info.previous_close
+                        
+                        if current_price and previous_close:
+                            change = current_price - previous_close
+                            change_pct = (change / previous_close) * 100 if previous_close > 0 else 0
+                            
+                            day_data = {
+                                'current': round(current_price, 2),
+                                'previous_close': round(previous_close, 2),
+                                'change': round(change, 2),
+                                'change_pct': round(change_pct, 2)
+                            }
+                            
+                            changes[symbol] = day_data
+                            _day_change_cache[symbol] = {
+                                'data': day_data,
+                                'timestamp': time.time()
+                            }
+                        else:
+                            # Default to no change
+                            changes[symbol] = {
+                                'current': round(current_price, 2) if current_price else 0,
+                                'previous_close': 0,
+                                'change': 0,
+                                'change_pct': 0
+                            }
+                except Exception as e:
+                    print(f"Error fetching day change for {symbol}: {e}")
+                    changes[symbol] = {'current': 0, 'previous_close': 0, 'change': 0, 'change_pct': 0}
+                    
+        except Exception as e:
+            print(f"Error in batch day change fetch: {e}")
+    
+    return changes
+
+
 # Dividend cache
 _dividend_cache = {}
 _dividend_cache_ttl = 3600  # 1 hour cache for dividends (changes less frequently)
@@ -400,6 +488,161 @@ def get_corporate_actions(symbol):
             'dividend_history': [],
             'split_history': []
         }
+
+
+def get_dividend_calendar(holdings_data):
+    """Get upcoming dividend calendar for portfolio holdings
+    
+    Args:
+        holdings_data: List of dicts with 'symbol', 'quantity', 'company_name'
+        
+    Returns:
+        list: List of upcoming dividend events sorted by date
+    """
+    dividend_events = []
+    
+    for holding in holdings_data:
+        symbol = holding.get('symbol')
+        quantity = holding.get('quantity', 0)
+        company_name = holding.get('company_name', symbol)
+        
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            
+            # Get ex-dividend date
+            ex_dividend_date = info.get('exDividendDate')
+            if ex_dividend_date:
+                ex_date = datetime.fromtimestamp(ex_dividend_date)
+                
+                # Only include future or recent dividends (within last 30 days)
+                if ex_date >= datetime.now() - timedelta(days=30):
+                    dividend_rate = info.get('lastDividendValue', 0) or info.get('dividendRate', 0) or 0
+                    expected_income = dividend_rate * quantity
+                    
+                    dividend_events.append({
+                        'symbol': symbol,
+                        'company_name': company_name,
+                        'ex_date': ex_date.strftime('%Y-%m-%d'),
+                        'ex_date_display': ex_date.strftime('%d %b %Y'),
+                        'dividend_per_share': round(dividend_rate, 2),
+                        'quantity': quantity,
+                        'expected_income': round(expected_income, 2),
+                        'is_upcoming': ex_date >= datetime.now()
+                    })
+        except Exception as e:
+            print(f"Error fetching dividend date for {symbol}: {e}")
+            continue
+    
+    # Sort by ex-dividend date
+    dividend_events.sort(key=lambda x: x['ex_date'], reverse=False)
+    
+    return dividend_events
+
+
+def get_portfolio_history(holdings_data, period='1M'):
+    """Get historical portfolio value over time
+    
+    Args:
+        holdings_data: List of dicts with 'symbol', 'quantity', 'buy_date'
+        period: Time period - '1D', '1W', '1M', '3M', '6M', '1Y'
+        
+    Returns:
+        dict: {'dates': [...], 'values': [...], 'change': float, 'change_pct': float}
+    """
+    # Map period to yfinance parameters
+    period_map = {
+        '1D': ('1d', '5m'),   # 1 day, 5 min intervals
+        '1W': ('5d', '1h'),   # 5 days, hourly
+        '1M': ('1mo', '1d'),  # 1 month, daily
+        '3M': ('3mo', '1d'),  # 3 months, daily
+        '6M': ('6mo', '1d'),  # 6 months, daily
+        '1Y': ('1y', '1d'),   # 1 year, daily
+    }
+    
+    yf_period, yf_interval = period_map.get(period, ('1mo', '1d'))
+    
+    if not holdings_data:
+        return {'dates': [], 'values': [], 'change': 0, 'change_pct': 0}
+    
+    try:
+        # Get unique symbols
+        symbols = list(set(h['symbol'] for h in holdings_data))
+        
+        # Build quantity map by symbol
+        quantity_map = {}
+        for h in holdings_data:
+            symbol = h['symbol']
+            quantity_map[symbol] = quantity_map.get(symbol, 0) + h['quantity']
+        
+        # Fetch historical data for all symbols
+        symbol_data = {}
+        for symbol in symbols:
+            try:
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period=yf_period, interval=yf_interval)
+                if not hist.empty:
+                    symbol_data[symbol] = hist['Close']
+            except Exception as e:
+                print(f"Error fetching history for {symbol}: {e}")
+                continue
+        
+        if not symbol_data:
+            return {'dates': [], 'values': [], 'change': 0, 'change_pct': 0}
+        
+        # Get common dates across all symbols
+        all_dates = set()
+        for symbol, data in symbol_data.items():
+            all_dates.update(data.index.tolist())
+        
+        all_dates = sorted(list(all_dates))
+        
+        # Calculate portfolio value for each date
+        dates = []
+        values = []
+        
+        for date in all_dates:
+            portfolio_value = 0
+            valid = True
+            
+            for symbol, quantity in quantity_map.items():
+                if symbol in symbol_data:
+                    data = symbol_data[symbol]
+                    # Find the closest date <= current date
+                    valid_dates = data.index[data.index <= date]
+                    if len(valid_dates) > 0:
+                        price = data.loc[valid_dates[-1]]
+                        portfolio_value += price * quantity
+                    else:
+                        valid = False
+                        break
+            
+            if valid and portfolio_value > 0:
+                if yf_interval == '5m' or yf_interval == '1h':
+                    dates.append(date.strftime('%H:%M'))
+                else:
+                    dates.append(date.strftime('%Y-%m-%d'))
+                values.append(round(portfolio_value, 2))
+        
+        # Calculate change
+        if len(values) >= 2:
+            change = values[-1] - values[0]
+            change_pct = (change / values[0] * 100) if values[0] > 0 else 0
+        else:
+            change = 0
+            change_pct = 0
+        
+        return {
+            'dates': dates,
+            'values': values,
+            'change': round(change, 2),
+            'change_pct': round(change_pct, 2),
+            'period': period
+        }
+        
+    except Exception as e:
+        print(f"Error calculating portfolio history: {e}")
+        return {'dates': [], 'values': [], 'change': 0, 'change_pct': 0}
 
 
 def get_stock_info(symbol):

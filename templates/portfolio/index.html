@@ -58,11 +58,14 @@
                 <a href="{{ url_for('portfolio.batch_upload') }}" class="btn btn-ghost">
                     <span>📤</span> Batch Upload
                 </a>
+                <a href="{{ url_for('portfolio.export_csv') }}" class="btn btn-ghost">
+                    <span>📥</span> Export CSV
+                </a>
             </div>
         </header>
 
         <!-- Portfolio Summary -->
-        <div class="stats-grid">
+        <div class="stats-grid stats-grid-5">
             <div class="stat-card">
                 <div class="stat-content">
                     <span class="stat-label">Total Invested</span>
@@ -85,11 +88,45 @@
             </div>
             <div class="stat-card">
                 <div class="stat-content">
-                    <span class="stat-label">Total Dividend (Annual)</span>
+                    <span class="stat-label">Today's Change</span>
+                    <span class="stat-value {% if total_day_change >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {% if total_day_change >= 0 %}+{% endif %}₹{{ "%.2f"|format(total_day_change) }}
+                        <small>({{ "%.2f"|format(total_day_change_pct) }}%)</small>
+                    </span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-content">
+                    <span class="stat-label">Annual Dividend</span>
                     <span class="stat-value text-success">₹{{ "%.2f"|format(total_dividend) }}</span>
                 </div>
             </div>
         </div>
+
+        <!-- Portfolio Performance Chart -->
+        {% if holdings %}
+        <div class="card">
+            <div class="card-header">
+                <h3>📈 Portfolio Performance</h3>
+                <div class="timeframe-selector">
+                    <button class="timeframe-btn" data-period="1D">1D</button>
+                    <button class="timeframe-btn" data-period="1W">1W</button>
+                    <button class="timeframe-btn active" data-period="1M">1M</button>
+                    <button class="timeframe-btn" data-period="3M">3M</button>
+                    <button class="timeframe-btn" data-period="6M">6M</button>
+                    <button class="timeframe-btn" data-period="1Y">1Y</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="performance-summary" id="performanceSummary">
+                    <span class="loading">Loading...</span>
+                </div>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="performanceChart"></canvas>
+                </div>
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Holdings Table -->
         <div class="card">
@@ -107,6 +144,7 @@
                                 <th>Qty</th>
                                 <th>Avg. Buy Price</th>
                                 <th>Current Price</th>
+                                <th>Day Chg</th>
                                 <th>Invested</th>
                                 <th>Value</th>
                                 <th>Gain/Loss</th>
@@ -135,6 +173,11 @@
                                     h.quantity|int }}</td>
                                 <td class="buy-price">₹{{ "%.2f"|format(h.buy_price) }}</td>
                                 <td class="current-price">₹{{ "%.2f"|format(h.current_price) }}</td>
+                                <td
+                                    class="day-change {% if h.day_change >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                    {% if h.day_change >= 0 %}+{% endif %}₹{{ "%.2f"|format(h.day_change) }}
+                                    <small>({{ "%.2f"|format(h.day_change_pct) }}%)</small>
+                                </td>
                                 <td class="total-invested">₹{{ "%.2f"|format(h.total_invested) }}</td>
                                 <td class="current-value">₹{{ "%.2f"|format(h.current_value) }}</td>
                                 <td
@@ -184,6 +227,22 @@
             </div>
         </div>
         {% endif %}
+
+        <!-- Dividend Calendar -->
+        {% if holdings %}
+        <div class="card">
+            <div class="card-header">
+                <h3>📅 Dividend Calendar</h3>
+                <span class="card-badge" id="dividendCount">Loading...</span>
+            </div>
+            <div class="card-body" id="dividendCalendarBody">
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <p>Loading dividend calendar...</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </main>
 </div>
 
@@ -209,6 +268,240 @@
 
 {% block extra_css %}
 <style>
+    /* Dropdown styles */
+    .dropdown {
+        position: relative;
+        display: inline-block;
+    }
+
+    .dropdown-toggle::after {
+        content: '▼';
+        font-size: 0.6em;
+        margin-left: 6px;
+    }
+
+    .dropdown-menu {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        z-index: 1000;
+        min-width: 180px;
+        padding: 8px 0;
+        margin-top: 4px;
+        background: #1a1a2e;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        display: none;
+    }
+
+    .dropdown-menu.show {
+        display: block;
+        animation: fadeIn 0.2s ease;
+    }
+
+    .dropdown-item {
+        display: block;
+        padding: 10px 16px;
+        color: #e2e8f0;
+        text-decoration: none;
+        font-size: 0.875rem;
+        transition: all 0.2s ease;
+    }
+
+    .dropdown-item:hover {
+        background: rgba(102, 126, 234, 0.2);
+        color: #fff;
+    }
+
+    /* Dividend Calendar styles */
+    .card-badge {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        font-size: 0.75rem;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-weight: 600;
+    }
+
+    .loading-state {
+        text-align: center;
+        padding: 40px;
+        color: #718096;
+    }
+
+    .loading-state .spinner {
+        width: 30px;
+        height: 30px;
+        border: 3px solid rgba(102, 126, 234, 0.2);
+        border-top-color: #667eea;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto 12px;
+    }
+
+    .dividend-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .dividend-item {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        transition: all 0.2s ease;
+    }
+
+    .dividend-item:hover {
+        background: rgba(102, 126, 234, 0.1);
+        border-color: rgba(102, 126, 234, 0.3);
+    }
+
+    .dividend-item.upcoming {
+        border-left: 3px solid #48bb78;
+    }
+
+    .dividend-item.past {
+        opacity: 0.6;
+        border-left: 3px solid #718096;
+    }
+
+    .dividend-date {
+        min-width: 70px;
+        text-align: center;
+        padding: 8px;
+        background: rgba(102, 126, 234, 0.2);
+        border-radius: 8px;
+    }
+
+    .dividend-date .day {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #667eea;
+        line-height: 1;
+    }
+
+    .dividend-date .month {
+        font-size: 0.75rem;
+        color: #a0aec0;
+        text-transform: uppercase;
+    }
+
+    .dividend-info {
+        flex: 1;
+    }
+
+    .dividend-info .company {
+        font-weight: 600;
+        color: #e2e8f0;
+        margin-bottom: 4px;
+    }
+
+    .dividend-info .symbol {
+        font-size: 0.8rem;
+        color: #718096;
+    }
+
+    .dividend-amount {
+        text-align: right;
+    }
+
+    .dividend-amount .expected {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #48bb78;
+    }
+
+    .dividend-amount .per-share {
+        font-size: 0.75rem;
+        color: #718096;
+    }
+
+    .no-dividends {
+        text-align: center;
+        padding: 40px;
+        color: #718096;
+    }
+
+    .no-dividends .icon {
+        font-size: 3rem;
+        margin-bottom: 12px;
+    }
+
+    /* Performance Chart styles */
+    .timeframe-selector {
+        display: flex;
+        gap: 4px;
+        background: rgba(255, 255, 255, 0.05);
+        padding: 4px;
+        border-radius: 8px;
+    }
+
+    .timeframe-btn {
+        padding: 6px 12px;
+        border: none;
+        background: transparent;
+        color: #a0aec0;
+        font-size: 0.8rem;
+        font-weight: 600;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .timeframe-btn:hover {
+        background: rgba(102, 126, 234, 0.2);
+        color: #e2e8f0;
+    }
+
+    .timeframe-btn.active {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+    }
+
+    .performance-summary {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 16px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 8px;
+    }
+
+    .performance-summary .current-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #e2e8f0;
+    }
+
+    .performance-summary .change {
+        font-size: 1rem;
+        font-weight: 600;
+        padding: 6px 12px;
+        border-radius: 6px;
+    }
+
+    .performance-summary .change.positive {
+        background: rgba(72, 187, 120, 0.2);
+        color: #48bb78;
+    }
+
+    .performance-summary .change.negative {
+        background: rgba(245, 101, 101, 0.2);
+        color: #f56565;
+    }
+
+    .performance-summary .period-label {
+        font-size: 0.8rem;
+        color: #718096;
+    }
+
     /* Inline editing styles */
     tr.editing {
         background-color: #1e3a5f !important;
@@ -674,6 +967,220 @@
     });
 </script>
 {% endif %}
+
+<!-- Export Dropdown Toggle -->
+<script>
+    const exportDropdown = document.getElementById('exportDropdown');
+    const exportMenu = document.getElementById('exportMenu');
+
+    if (exportDropdown && exportMenu) {
+        exportDropdown.addEventListener('click', (e) => {
+            e.stopPropagation();
+            exportMenu.classList.toggle('show');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!exportDropdown.contains(e.target)) {
+                exportMenu.classList.remove('show');
+            }
+        });
+    }
+</script>
+
+<!-- Dividend Calendar Script -->
+<script>
+    async function loadDividendCalendar() {
+        const container = document.getElementById('dividendCalendarBody');
+        const countBadge = document.getElementById('dividendCount');
+
+        if (!container) return;
+
+        try {
+            const response = await fetch('/portfolio/api/dividend-calendar');
+            const result = await response.json();
+
+            if (result.success && result.data.length > 0) {
+                const upcomingCount = result.data.filter(d => d.is_upcoming).length;
+                countBadge.textContent = `${upcomingCount} upcoming`;
+
+                let html = '<div class="dividend-list">';
+
+                result.data.forEach(dividend => {
+                    const date = new Date(dividend.ex_date);
+                    const day = date.getDate();
+                    const month = date.toLocaleString('en-US', { month: 'short' });
+                    const statusClass = dividend.is_upcoming ? 'upcoming' : 'past';
+
+                    html += `
+                    <div class="dividend-item ${statusClass}">
+                        <div class="dividend-date">
+                            <div class="day">${day}</div>
+                            <div class="month">${month}</div>
+                        </div>
+                        <div class="dividend-info">
+                            <div class="company">${dividend.company_name}</div>
+                            <div class="symbol">${dividend.symbol} • ${dividend.quantity} shares</div>
+                        </div>
+                        <div class="dividend-amount">
+                            <div class="expected">₹${dividend.expected_income.toFixed(2)}</div>
+                            <div class="per-share">₹${dividend.dividend_per_share}/share</div>
+                        </div>
+                    </div>
+                `;
+                });
+
+                html += '</div>';
+                container.innerHTML = html;
+            } else {
+                countBadge.textContent = '0 upcoming';
+                container.innerHTML = `
+                <div class="no-dividends">
+                    <div class="icon">📭</div>
+                    <p>No upcoming dividend dates found for your holdings.</p>
+                    <small>Dividend dates are updated periodically by companies.</small>
+                </div>
+            `;
+            }
+        } catch (error) {
+            console.error('Error loading dividend calendar:', error);
+            countBadge.textContent = 'Error';
+            container.innerHTML = `
+            <div class="no-dividends">
+                <div class="icon">⚠️</div>
+                <p>Unable to load dividend calendar</p>
+            </div>
+        `;
+        }
+    }
+
+    // Load dividend calendar on page load
+    document.addEventListener('DOMContentLoaded', loadDividendCalendar);
+</script>
+
+<!-- Performance Chart Script -->
+<script>
+    let performanceChart = null;
+    let currentPeriod = '1M';
+
+    async function loadPerformanceChart(period = '1M') {
+        const summaryEl = document.getElementById('performanceSummary');
+        const chartCanvas = document.getElementById('performanceChart');
+
+        if (!chartCanvas) return;
+
+        currentPeriod = period;
+        summaryEl.innerHTML = '<span class="loading">Loading...</span>';
+
+        try {
+            const response = await fetch(`/portfolio/api/performance-history?period=${period}`);
+            const result = await response.json();
+
+            if (result.success && result.data.dates.length > 0) {
+                const data = result.data;
+                const lastValue = data.values[data.values.length - 1] || 0;
+                const changeClass = data.change >= 0 ? 'positive' : 'negative';
+                const changeSign = data.change >= 0 ? '+' : '';
+
+                // Update summary
+                summaryEl.innerHTML = `
+                <span class="current-value">₹${lastValue.toLocaleString()}</span>
+                <span class="change ${changeClass}">
+                    ${changeSign}₹${data.change.toLocaleString()} (${changeSign}${data.change_pct}%)
+                </span>
+                <span class="period-label">${period} Change</span>
+            `;
+
+                // Update chart
+                if (performanceChart) {
+                    performanceChart.destroy();
+                }
+
+                const ctx = chartCanvas.getContext('2d');
+                const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+                gradient.addColorStop(0, data.change >= 0 ? 'rgba(72, 187, 120, 0.3)' : 'rgba(245, 101, 101, 0.3)');
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+                performanceChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.dates,
+                        datasets: [{
+                            label: 'Portfolio Value',
+                            data: data.values,
+                            borderColor: data.change >= 0 ? '#48bb78' : '#f56565',
+                            backgroundColor: gradient,
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 6,
+                            pointHoverBackgroundColor: data.change >= 0 ? '#48bb78' : '#f56565'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            intersect: false,
+                            mode: 'index'
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: '#1a1a2e',
+                                titleColor: '#e2e8f0',
+                                bodyColor: '#a0aec0',
+                                borderColor: 'rgba(102, 126, 234, 0.3)',
+                                borderWidth: 1,
+                                displayColors: false,
+                                callbacks: {
+                                    label: (context) => `₹${context.parsed.y.toLocaleString()}`
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: {
+                                    color: '#718096',
+                                    maxTicksLimit: 6
+                                }
+                            },
+                            y: {
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.05)',
+                                    drawBorder: false
+                                },
+                                ticks: {
+                                    color: '#718096',
+                                    callback: (val) => '₹' + val.toLocaleString()
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                summaryEl.innerHTML = '<span class="loading">No historical data available</span>';
+            }
+        } catch (error) {
+            console.error('Error loading performance chart:', error);
+            summaryEl.innerHTML = '<span class="loading">Error loading chart</span>';
+        }
+    }
+
+    // Timeframe button clicks
+    document.querySelectorAll('.timeframe-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            loadPerformanceChart(btn.dataset.period);
+        });
+    });
+
+    // Load chart on page load
+    document.addEventListener('DOMContentLoaded', () => loadPerformanceChart('1M'));
+</script>
 
 <!-- Corporate Actions Modal Script -->
 <script>

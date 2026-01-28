@@ -944,6 +944,22 @@ textarea {
     margin-bottom: var(--spacing-xl);
 }
 
+.stats-grid.stats-grid-5 {
+    grid-template-columns: repeat(5, 1fr);
+}
+
+@media (max-width: 1200px) {
+    .stats-grid.stats-grid-5 {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .stats-grid.stats-grid-5 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
 .stat-card {
     background: var(--color-bg-card);
     backdrop-filter: blur(20px);

@@ -48,15 +48,17 @@ def index():
     # Calculate portfolio stats using consolidated data
     total_invested = sum(data['total_cost'] for data in consolidated.values())
     
-    # Fetch current prices and dividend info
-    from services.stock_service import get_current_prices, get_dividend_info
+    # Fetch current prices, dividend info, and day changes
+    from services.stock_service import get_current_prices, get_dividend_info, get_day_changes
     symbols = list(consolidated.keys())
     current_prices = get_current_prices(symbols)
     dividend_info = get_dividend_info(symbols)
+    day_changes = get_day_changes(symbols)
     
     holdings_data = []
     total_current = 0
     total_dividend = 0
+    total_day_change = 0
     
     for symbol, data in consolidated.items():
         # Get price data with currency info
@@ -79,6 +81,12 @@ def index():
         dividend_earned = data['quantity'] * dividend_per_share
         total_dividend += dividend_earned
         
+        # Get day change for this stock
+        day_change_data = day_changes.get(symbol, {'change': 0, 'change_pct': 0})
+        day_change = day_change_data['change'] * data['quantity']
+        day_change_pct = day_change_data['change_pct']
+        total_day_change += day_change
+        
         total_current += current_value
         holdings_data.append({
             'ids': data['ids'],  # List of all holding IDs for this symbol
@@ -98,7 +106,9 @@ def index():
             'market': price_data.get('market', 'IN') if isinstance(price_data, dict) else 'IN',
             'dividend_per_share': dividend_per_share,
             'dividend_earned': dividend_earned,
-            'lot_count': len(data['ids'])  # Number of separate lots
+            'lot_count': len(data['ids']),  # Number of separate lots
+            'day_change': day_change,
+            'day_change_pct': day_change_pct
         })
     
     # Sector distribution
@@ -107,12 +117,17 @@ def index():
         sector = h['sector'] or 'Other'
         sector_data[sector] = sector_data.get(sector, 0) + h['current_value']
     
+    # Calculate day change percentage for portfolio
+    total_day_change_pct = (total_day_change / (total_current - total_day_change)) * 100 if (total_current - total_day_change) > 0 else 0
+    
     return render_template('portfolio/index.html', 
                          holdings=holdings_data,
                          total_invested=total_invested,
                          total_current=total_current,
                          total_gain_loss=total_current - total_invested,
                          total_dividend=total_dividend,
+                         total_day_change=total_day_change,
+                         total_day_change_pct=total_day_change_pct,
                          sector_data=sector_data)
 
 @portfolio_bp.route('/add', methods=['GET', 'POST'])
@@ -371,3 +386,325 @@ def get_corporate_actions_api(symbol):
             'success': False,
             'error': str(e)
         }), 500
+
+
+@portfolio_bp.route('/api/dividend-calendar')
+@login_required
+def get_dividend_calendar_api():
+    """Get dividend calendar for user's holdings"""
+    try:
+        from services.stock_service import get_dividend_calendar
+        
+        # Get user's holdings
+        holdings = Holding.query.filter_by(user_id=current_user.id).all()
+        
+        if not holdings:
+            return jsonify({
+                'success': True,
+                'data': [],
+                'message': 'No holdings found'
+            })
+        
+        # Consolidate by symbol
+        consolidated = {}
+        for h in holdings:
+            if h.symbol not in consolidated:
+                consolidated[h.symbol] = {
+                    'symbol': h.symbol,
+                    'quantity': h.quantity,
+                    'company_name': h.company_name
+                }
+            else:
+                consolidated[h.symbol]['quantity'] += h.quantity
+        
+        holdings_data = list(consolidated.values())
+        dividend_events = get_dividend_calendar(holdings_data)
+        
+        return jsonify({
+            'success': True,
+            'data': dividend_events
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@portfolio_bp.route('/api/performance-history')
+@login_required
+def get_performance_history_api():
+    """Get portfolio performance history for charting"""
+    try:
+        from services.stock_service import get_portfolio_history
+        
+        period = request.args.get('period', '1M')
+        
+        # Get user's holdings
+        holdings = Holding.query.filter_by(user_id=current_user.id).all()
+        
+        if not holdings:
+            return jsonify({
+                'success': True,
+                'data': {'dates': [], 'values': [], 'change': 0, 'change_pct': 0},
+                'message': 'No holdings found'
+            })
+        
+        holdings_data = [
+            {'symbol': h.symbol, 'quantity': h.quantity, 'buy_date': h.buy_date}
+            for h in holdings
+        ]
+        
+        history = get_portfolio_history(holdings_data, period)
+        
+        return jsonify({
+            'success': True,
+            'data': history
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@portfolio_bp.route('/export/csv')
+@login_required
+def export_csv():
+    """Export portfolio holdings as CSV"""
+    import csv
+    from io import StringIO
+    from flask import Response
+    from services.stock_service import get_current_prices, get_dividend_info, get_day_changes
+    
+    holdings = Holding.query.filter_by(user_id=current_user.id).all()
+    
+    if not holdings:
+        flash('No holdings to export', 'warning')
+        return redirect(url_for('portfolio.index'))
+    
+    # Consolidate holdings by symbol
+    consolidated = {}
+    for h in holdings:
+        symbol = h.symbol
+        if symbol not in consolidated:
+            consolidated[symbol] = {
+                'symbol': symbol,
+                'company_name': h.company_name,
+                'quantity': h.quantity,
+                'total_cost': h.quantity * h.buy_price,
+                'sector': h.sector,
+            }
+        else:
+            consolidated[symbol]['quantity'] += h.quantity
+            consolidated[symbol]['total_cost'] += h.quantity * h.buy_price
+    
+    # Fetch current prices and dividends
+    symbols = list(consolidated.keys())
+    current_prices = get_current_prices(symbols)
+    dividend_info = get_dividend_info(symbols)
+    day_changes = get_day_changes(symbols)
+    
+    # Create CSV in memory
+    si = StringIO()
+    writer = csv.writer(si)
+    
+    # Header row
+    writer.writerow([
+        'Symbol', 'Company', 'Quantity', 'Avg Buy Price', 'Current Price',
+        'Invested', 'Current Value', 'Gain/Loss', 'Gain/Loss %', 
+        'Day Change', 'Day Change %', 'Annual Dividend', 'Sector'
+    ])
+    
+    # Data rows
+    for symbol, data in consolidated.items():
+        price_data = current_prices.get(symbol, {'price': 0})
+        current_price = price_data['price'] if isinstance(price_data, dict) else price_data
+        avg_price = data['total_cost'] / data['quantity'] if data['quantity'] > 0 else 0
+        current_value = data['quantity'] * current_price
+        gain_loss = current_value - data['total_cost']
+        gain_loss_pct = ((current_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
+        
+        day_change_data = day_changes.get(symbol, {'change': 0, 'change_pct': 0})
+        day_change = day_change_data['change'] * data['quantity']
+        
+        dividend = dividend_info.get(symbol, 0) * data['quantity']
+        
+        writer.writerow([
+            symbol,
+            data['company_name'] or '',
+            round(data['quantity'], 2),
+            round(avg_price, 2),
+            round(current_price, 2),
+            round(data['total_cost'], 2),
+            round(current_value, 2),
+            round(gain_loss, 2),
+            round(gain_loss_pct, 2),
+            round(day_change, 2),
+            round(day_change_data['change_pct'], 2),
+            round(dividend, 2),
+            data['sector'] or 'N/A'
+        ])
+    
+    output = si.getvalue()
+    return Response(
+        output,
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment;filename=portfolio_export.csv'}
+    )
+
+
+@portfolio_bp.route('/export/excel')
+@login_required
+def export_excel():
+    """Export portfolio holdings as Excel"""
+    from io import BytesIO
+    from flask import send_file
+    from services.stock_service import get_current_prices, get_dividend_info, get_day_changes
+    
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    except ImportError:
+        flash('Excel export requires openpyxl. Please install it.', 'error')
+        return redirect(url_for('portfolio.index'))
+    
+    holdings = Holding.query.filter_by(user_id=current_user.id).all()
+    
+    if not holdings:
+        flash('No holdings to export', 'warning')
+        return redirect(url_for('portfolio.index'))
+    
+    # Consolidate holdings by symbol
+    consolidated = {}
+    for h in holdings:
+        symbol = h.symbol
+        if symbol not in consolidated:
+            consolidated[symbol] = {
+                'symbol': symbol,
+                'company_name': h.company_name,
+                'quantity': h.quantity,
+                'total_cost': h.quantity * h.buy_price,
+                'sector': h.sector,
+            }
+        else:
+            consolidated[symbol]['quantity'] += h.quantity
+            consolidated[symbol]['total_cost'] += h.quantity * h.buy_price
+    
+    # Fetch current prices and dividends
+    symbols = list(consolidated.keys())
+    current_prices = get_current_prices(symbols)
+    dividend_info = get_dividend_info(symbols)
+    day_changes = get_day_changes(symbols)
+    
+    # Create workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Portfolio Holdings"
+    
+    # Styles
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="667EEA", end_color="667EEA", fill_type="solid")
+    currency_style = '#,##0.00'
+    percent_style = '0.00%'
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # Header row
+    headers = [
+        'Symbol', 'Company', 'Quantity', 'Avg Buy Price', 'Current Price',
+        'Invested', 'Current Value', 'Gain/Loss', 'Gain/Loss %', 
+        'Day Change', 'Day Change %', 'Annual Dividend', 'Sector'
+    ]
+    
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = thin_border
+    
+    # Data rows
+    total_invested = 0
+    total_current = 0
+    total_gain_loss = 0
+    
+    row = 2
+    for symbol, data in consolidated.items():
+        price_data = current_prices.get(symbol, {'price': 0})
+        current_price = price_data['price'] if isinstance(price_data, dict) else price_data
+        avg_price = data['total_cost'] / data['quantity'] if data['quantity'] > 0 else 0
+        current_value = data['quantity'] * current_price
+        gain_loss = current_value - data['total_cost']
+        gain_loss_pct = ((current_price - avg_price) / avg_price) if avg_price > 0 else 0
+        
+        day_change_data = day_changes.get(symbol, {'change': 0, 'change_pct': 0})
+        day_change = day_change_data['change'] * data['quantity']
+        
+        dividend = dividend_info.get(symbol, 0) * data['quantity']
+        
+        total_invested += data['total_cost']
+        total_current += current_value
+        total_gain_loss += gain_loss
+        
+        row_data = [
+            symbol,
+            data['company_name'] or '',
+            round(data['quantity'], 2),
+            round(avg_price, 2),
+            round(current_price, 2),
+            round(data['total_cost'], 2),
+            round(current_value, 2),
+            round(gain_loss, 2),
+            gain_loss_pct,
+            round(day_change, 2),
+            day_change_data['change_pct'] / 100,
+            round(dividend, 2),
+            data['sector'] or 'N/A'
+        ]
+        
+        for col, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row, column=col, value=value)
+            cell.border = thin_border
+            if col in [4, 5, 6, 7, 8, 10, 12]:  # Currency columns
+                cell.number_format = '₹#,##0.00'
+            elif col in [9, 11]:  # Percentage columns
+                cell.number_format = '0.00%'
+        
+        row += 1
+    
+    # Totals row
+    ws.cell(row=row, column=1, value="TOTAL").font = Font(bold=True)
+    ws.cell(row=row, column=6, value=round(total_invested, 2)).font = Font(bold=True)
+    ws.cell(row=row, column=7, value=round(total_current, 2)).font = Font(bold=True)
+    ws.cell(row=row, column=8, value=round(total_gain_loss, 2)).font = Font(bold=True)
+    
+    # Auto-adjust column widths
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        ws.column_dimensions[column].width = min(max_length + 2, 20)
+    
+    # Save to bytes
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='portfolio_export.xlsx'
+    )
