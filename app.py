@@ -1,13 +1,20 @@
 import os
 from flask import Flask
 from extensions import db, login_manager
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 def create_app():
     app = Flask(__name__)
     
     # Configuration
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///finance.db'
+    
+    # Database configuration - Use NeonDB from environment, fallback to SQLite for development
+    database_url = os.environ.get('DATABASE_URL', 'sqlite:///finance.db')
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Initialize extensions

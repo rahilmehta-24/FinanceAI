@@ -23,7 +23,7 @@ class User(UserMixin, db.Model):
 class Holding(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    symbol = db.Column(db.String(10), nullable=False)
+    symbol = db.Column(db.String(20), nullable=False)  # Increased from 10 to 20 for longer symbols
     company_name = db.Column(db.String(100))
     quantity = db.Column(db.Float, nullable=False)
     buy_price = db.Column(db.Float, nullable=False)
