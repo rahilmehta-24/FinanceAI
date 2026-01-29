@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Register - FinanceAI{% endblock %}
+{% block title %}Register - WealthWise{% endblock %}
 
 {% block body %}
 <div class="auth-page">
@@ -8,8 +8,8 @@
         <div class="auth-card">
             <div class="auth-header">
                 <a href="/" class="auth-logo">
-                    <span class="logo-icon">📊</span>
-                    <span class="logo-text">FinanceAI</span>
+                    <img src="{{ url_for('static', filename='images/wealthwise_logo.png') }}" alt="WealthWise"
+                        style="height: 50px; margin-bottom: 20px;">
                 </a>
                 <h1>Create Account</h1>
                 <p>Start managing your portfolio today</p>

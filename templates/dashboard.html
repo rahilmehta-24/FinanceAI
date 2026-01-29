@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - FinanceAI{% endblock %}
+{% block title %}Dashboard - WealthWise{% endblock %}
 
 {% block body %}
 <div class="app-layout">
@@ -8,8 +8,8 @@
     <aside class="sidebar">
         <div class="sidebar-header">
             <a href="{{ url_for('main.dashboard') }}" class="logo">
-                <span class="logo-icon">📊</span>
-                <span class="logo-text">FinanceAI</span>
+                <img src="{{ url_for('static', filename='images/wealthwise_logo.png') }}" alt="WealthWise"
+                    style="height: 32px;">
             </a>
         </div>
 
