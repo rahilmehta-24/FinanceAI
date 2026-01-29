@@ -475,7 +475,7 @@ def get_performance_history_api():
 def get_ai_review_api():
     """Get AI-powered portfolio review using Gemini"""
     try:
-        from services.ai_service import get_portfolio_review_gemini
+        from services.ai_service import get_portfolio_review_gemini, get_stock_recommendations_gemini
         from services.stock_service import get_current_prices, get_dividend_info
         
         # Get user's holdings
@@ -531,6 +531,7 @@ def get_ai_review_api():
                 'quantity': data['quantity'],
                 'total_invested': data['total_cost'],
                 'current_value': current_value,
+                'current_price': current_price,
                 'gain_loss': gain_loss,
                 'sector': sector
             })
@@ -542,8 +543,31 @@ def get_ai_review_api():
             'sector_data': sector_data
         }
         
-        # Get AI review
-        result = get_portfolio_review_gemini(holdings_data, portfolio_stats)
+        # Get AI portfolio-level review
+        portfolio_review = get_portfolio_review_gemini(holdings_data, portfolio_stats)
+        
+        # Get AI stock-level recommendations with buy/sell/hold advice
+        stock_recommendations = get_stock_recommendations_gemini(holdings_data)
+        
+        # Combine results
+        result = {
+            'success': True,
+            'portfolio_review': portfolio_review.get('review', {}) if portfolio_review.get('success') else None,
+            'stock_recommendations': stock_recommendations.get('recommendations', []) if stock_recommendations.get('success') else [],
+            'errors': []
+        }
+        
+        # Add any errors from individual calls
+        if not portfolio_review.get('success'):
+            result['errors'].append(f"Portfolio review: {portfolio_review.get('error', 'Unknown error')}")
+        
+        if not stock_recommendations.get('success'):
+            result['errors'].append(f"Stock recommendations: {stock_recommendations.get('error', 'Unknown error')}")
+        
+        # If both failed, mark overall as failed
+        if not portfolio_review.get('success') and not stock_recommendations.get('success'):
+            result['success'] = False
+            result['error'] = '; '.join(result['errors'])
         
         return jsonify(result)
         

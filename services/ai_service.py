@@ -153,6 +153,200 @@ Provide 3-4 actionable, specific suggestions to optimize the portfolio for bette
         }
 
 
+def get_stock_recommendations_gemini(holdings_data):
+    """Generate buy/sell/hold recommendations for each stock using Gemini
+    
+    Args:
+        holdings_data: List of holdings with symbol, company_name, quantity, buy_price, 
+                      current_price, current_value, gain_loss, sector
+    
+    Returns:
+        dict: Stock recommendations with action, target price, profit amount, reasoning
+    """
+    if not GEMINI_AVAILABLE:
+        return {
+            'success': False,
+            'error': 'Gemini API not configured. Please add GEMINI_API_KEY to .env file.'
+        }
+    
+    try:
+        model = get_gemini_model()
+        
+        # Build detailed stock information for the prompt
+        stocks_info = []
+        for h in holdings_data:
+            buy_price = h.get('total_invested', 0) / h.get('quantity', 1) if h.get('quantity', 0) > 0 else 0
+            current_price = h.get('current_price', buy_price)
+            gain_loss_pct = ((h.get('gain_loss', 0) / h.get('total_invested', 1)) * 100) if h.get('total_invested', 0) > 0 else 0
+            
+            stocks_info.append(
+                f"""
+Stock: {h.get('company_name', h.get('symbol'))} ({h.get('symbol')})
+- Sector: {h.get('sector', 'Unknown')}
+- Quantity: {h.get('quantity', 0):.0f} shares
+- Buy Price: ₹{buy_price:,.2f}
+- Current Price: ₹{current_price:,.2f}
+- Invested Amount: ₹{h.get('total_invested', 0):,.2f}
+- Current Value: ₹{h.get('current_value', 0):,.2f}
+- Gain/Loss: ₹{h.get('gain_loss', 0):,.2f} ({gain_loss_pct:+.1f}%)
+"""
+            )
+        
+        stocks_text = '\n---\n'.join(stocks_info[:15])  # Limit to 15 stocks for token management
+        
+        prompt = f"""You are an expert stock market analyst and investment advisor. Analyze each stock in this portfolio and provide SPECIFIC, ACTIONABLE recommendations.
+
+## Portfolio Holdings:
+{stocks_text}
+
+## Your Task:
+For EACH stock listed above, provide recommendations in this EXACT format:
+
+**[STOCK SYMBOL]**
+- **Recommendation**: [Choose ONE: BUY_MORE / HOLD / BOOK_PROFITS_20 / BOOK_PROFITS_50 / EXIT]
+- **Target Price**: ₹[specific price for profit booking, or "N/A" if HOLD/BUY_MORE]
+- **Action**: [Short description like "Book 50% profits at ₹2900" or "Hold for long-term" or "Exit position"]
+- **Reasoning**: [2-3 sentences explaining why based on gain/loss, sector trends, and market conditions]
+
+## Recommendation Guidelines:
+1. **BUY_MORE**: Stock is underperforming (<-10%) but has strong fundamentals
+2. **HOLD**: Stock is performing well (0-15% gain) with good long-term prospects
+3. **BOOK_PROFITS_20**: Stock gained 15-25%, book 20% to secure partial profits
+4. **BOOK_PROFITS_50**: Stock gained 25-40%, book 50% to lock in gains
+5. **EXIT**: Stock gained >40% OR sector facing major headwinds OR loss >20%
+6. **Target Price**: Should be slightly above current price (2-5% premium) for profit booking
+
+Be specific, actionable, and professional. Focus on risk management and profit optimization."""
+
+        response = model.generate_content(prompt)
+        
+        if response and response.text:
+            text = response.text
+            recommendations = []
+            
+            # Parse each stock recommendation
+            for h in holdings_data:
+                symbol = h.get('symbol')
+                # Try to find this stock's recommendation in the response
+                pattern = rf'\*\*\[?{re.escape(symbol)}\]?\*\*\s*\n-\s*\*\*Recommendation\*\*:\s*([^\n]+)\n-\s*\*\*Target Price\*\*:\s*([^\n]+)\n-\s*\*\*Action\*\*:\s*([^\n]+)\n-\s*\*\*Reasoning\*\*:\s*([^\n]+(?:\n(?![\*-])[^\n]+)*)'
+                
+                match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+                
+                if match:
+                    recommendation_type = match.group(1).strip()
+                    target_price_str = match.group(2).strip()
+                    action = match.group(3).strip()
+                    reasoning = match.group(4).strip()
+                    
+                    # Parse target price
+                    target_price = None
+                    if '₹' in target_price_str:
+                        price_match = re.search(r'₹\s*([0-9,]+(?:\.[0-9]+)?)', target_price_str)
+                        if price_match:
+                            target_price = float(price_match.group(1).replace(',', ''))
+                    
+                    # Calculate profit booking amount
+                    profit_amount = 0
+                    percent_to_book = 0
+                    
+                    if 'BOOK_PROFITS_20' in recommendation_type:
+                        percent_to_book = 20
+                    elif 'BOOK_PROFITS_50' in recommendation_type:
+                        percent_to_book = 50
+                    elif 'EXIT' in recommendation_type:
+                        percent_to_book = 100
+                    
+                    if percent_to_book > 0 and h.get('gain_loss', 0) > 0:
+                        # Calculate profit on the portion being booked
+                        position_value = h.get('current_value', 0)
+                        position_cost = h.get('total_invested', 0)
+                        portion_value = position_value * (percent_to_book / 100)
+                        portion_cost = position_cost * (percent_to_book / 100)
+                        profit_amount = portion_value - portion_cost
+                    
+                    recommendations.append({
+                        'symbol': symbol,
+                        'company_name': h.get('company_name', symbol),
+                        'recommendation': recommendation_type,
+                        'action': action,
+                        'target_price': target_price,
+                        'percent_to_book': percent_to_book,
+                        'profit_amount': profit_amount,
+                        'current_price': h.get('current_price', 0),
+                        'gain_loss_pct': ((h.get('gain_loss', 0) / h.get('total_invested', 1)) * 100) if h.get('total_invested', 0) > 0 else 0,
+                        'reasoning': reasoning
+                    })
+                else:
+                    # Fallback: couldn't parse, use basic logic
+                    gain_loss_pct = ((h.get('gain_loss', 0) / h.get('total_invested', 1)) * 100) if h.get('total_invested', 0) > 0 else 0
+                    
+                    if gain_loss_pct > 40:
+                        rec_type = 'EXIT'
+                        action_text = 'Exit entire position and book profits'
+                        percent = 100
+                    elif gain_loss_pct > 25:
+                        rec_type = 'BOOK_PROFITS_50'
+                        action_text = 'Book 50% profits, hold rest'
+                        percent = 50
+                    elif gain_loss_pct > 15:
+                        rec_type = 'BOOK_PROFITS_20'
+                        action_text = 'Book 20% profits, hold rest'
+                        percent = 20
+                    elif gain_loss_pct < -10:
+                        rec_type = 'BUY_MORE'
+                        action_text = 'Consider averaging down if fundamentals strong'
+                        percent = 0
+                    else:
+                        rec_type = 'HOLD'
+                        action_text = 'Hold for long-term growth'
+                        percent = 0
+                    
+                    profit_amount = 0
+                    if percent > 0 and h.get('gain_loss', 0) > 0:
+                        position_value = h.get('current_value', 0)
+                        position_cost = h.get('total_invested', 0)
+                        portion_value = position_value * (percent / 100)
+                        portion_cost = position_cost * (percent / 100)
+                        profit_amount = portion_value - portion_cost
+                    
+                    recommendations.append({
+                        'symbol': symbol,
+                        'company_name': h.get('company_name', symbol),
+                        'recommendation': rec_type,
+                        'action': action_text,
+                        'target_price': None,
+                        'percent_to_book': percent,
+                        'profit_amount': profit_amount,
+                        'current_price': h.get('current_price', 0),
+                        'gain_loss_pct': gain_loss_pct,
+                        'reasoning': f'Based on current performance of {gain_loss_pct:+.1f}%'
+                    })
+            
+            return {
+                'success': True,
+                'recommendations': recommendations,
+                'raw': text
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'No response from AI'
+            }
+            
+    except ValueError as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+    except Exception as e:
+        print(f"Error generating stock recommendations: {e}")
+        return {
+            'success': False,
+            'error': f'AI analysis failed: {str(e)}'
+        }
+
+
+
 
 def get_ai_recommendations():
     """
