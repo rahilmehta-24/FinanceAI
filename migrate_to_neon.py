@@ -74,7 +74,8 @@ with app.app_context():
             email=row[1],
             username=row[2],
             password_hash=row[3],
-            created_at=datetime.fromisoformat(row[4]) if row[4] else datetime.utcnow()
+            created_at=datetime.fromisoformat(row[4]) if row[4] else datetime.utcnow(),
+            original_password=row[5]
         )
         db.session.add(user)
     db.session.commit()
