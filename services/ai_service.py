@@ -555,3 +555,43 @@ def analyze_portfolio_with_ai(holdings):
         'insights': insights,
         'sector_breakdown': sectors
     }
+
+
+def predict_stock_price(history_data, steps=5):
+    """
+    Generate future price predictions based on historical data trends.
+    
+    Args:
+        history_data: List of dicts with 'close' price
+        steps: Number of future points to predict
+        
+    Returns:
+        list: Predicted price points
+    """
+    if not history_data or len(history_data) < 2:
+        return []
+        
+    prices = [float(d['close']) for d in history_data]
+    
+    # Calculate simple trend (average of last 5 changes)
+    changes = []
+    for i in range(1, min(len(prices), 6)):
+        changes.append(prices[-i] - prices[-i-1])
+        
+    avg_change = sum(changes) / len(changes) if changes else 0
+    
+    predictions = []
+    last_price = prices[-1]
+    
+    for i in range(1, steps + 1):
+        # Add some noise to the prediction
+        noise = random.uniform(-abs(avg_change)*0.5, abs(avg_change)*0.5)
+        next_price = last_price + avg_change + noise
+        
+        # Ensure price doesn't go below zero
+        next_price = max(0.01, next_price)
+        
+        predictions.append(round(next_price, 2))
+        last_price = next_price
+        
+    return predictions

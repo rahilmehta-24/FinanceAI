@@ -1,6 +1,9 @@
 from flask import Blueprint, jsonify, request
-from flask_login import login_required
-from services.stock_service import STOCK_DATA, get_stock_info
+from flask_login import login_required, current_user
+from services.stock_service import STOCK_DATA, get_stock_info, validate_indian_stock, fetch_real_time_price
+from services.ai_service import predict_stock_price
+from models import Watchlist
+from extensions import db
 import yfinance as yf
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -10,22 +13,45 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 @login_required
 def search_stocks():
     """Search stocks by symbol or name - used for autocomplete"""
+    from services.stock_service import NIFTY_50_STOCKS
     query = request.args.get('q', '').upper().strip()
     
     if not query or len(query) < 1:
         return jsonify([])
     
     results = []
+    seen = set()
     
-    # Search in our Indian stock database
+    # 1. Search in our Indian stock database (STOCK_DATA)
     for symbol, data in STOCK_DATA.items():
-        # Match by symbol or company name
         if query in symbol.upper() or query in data['name'].upper():
-            results.append({
-                'symbol': symbol,
-                'name': data['name'],
-                'sector': data['sector']
-            })
+            if symbol not in seen:
+                results.append({
+                    'symbol': symbol,
+                    'name': data['name'],
+                    'sector': data['sector']
+                })
+                seen.add(symbol)
+    
+    # 2. Search in NIFTY_50_STOCKS list
+    for symbol in NIFTY_50_STOCKS:
+        if symbol not in seen:
+            if query in symbol.upper():
+                name = symbol.replace('.NS', '').replace('.BO', '')
+                results.append({
+                    'symbol': symbol,
+                    'name': name,
+                    'sector': 'Equity'
+                })
+                seen.add(symbol)
+    
+    # 3. Quick fallback if no results and looks like a symbol
+    if not results and len(query) >= 3 and query.isalpha():
+        results.append({
+            'symbol': f"{query}.NS",
+            'name': query,
+            'sector': 'Potential Match'
+        })
     
     # Limit results for performance
     return jsonify(results[:15])
@@ -268,9 +294,119 @@ def get_stock_history(symbol):
             'symbol': symbol,
             'period': period,
             'interval': interval,
-            'data': data
+            'data': data,
+            'predictions': predict_stock_price(data)
         })
         
     except Exception as e:
         print(f"Error fetching history for {symbol}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/watchlist', methods=['GET'])
+@login_required
+def get_watchlist():
+    """Get user's watchlist items with current prices"""
+    try:
+        items = Watchlist.query.filter_by(user_id=current_user.id).all()
+        results = []
+        
+        if not items:
+            return jsonify([])
+            
+        # Batch fetch prices and day changes
+        symbols = [item.symbol for item in items]
+        from services.stock_service import get_day_changes
+        changes_data = get_day_changes(symbols)
+        
+        for item in items:
+            day_data = changes_data.get(item.symbol, {})
+            results.append({
+                'symbol': item.symbol,
+                'name': item.company_name,
+                'sector': item.sector,
+                'price': day_data.get('current', 0),
+                'currency': '₹',
+                'change_pct': day_data.get('change_pct', 0)
+            })
+        return jsonify(results)
+    except Exception as e:
+        print(f"Error fetching watchlist: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/watchlist', methods=['POST'])
+@login_required
+def add_to_watchlist():
+    """Add a stock to user's watchlist"""
+    try:
+        data = request.get_json()
+        symbol = data.get('symbol', '').upper().strip()
+        
+        if not symbol:
+            return jsonify({'error': 'Symbol is required'}), 400
+            
+        # Add .NS if missing and it's not .BO
+        if not symbol.endswith('.NS') and not symbol.endswith('.BO'):
+            symbol += '.NS'
+            
+        # Check if already in watchlist
+        existing = Watchlist.query.filter_by(user_id=current_user.id, symbol=symbol).first()
+        if existing:
+            return jsonify({'message': 'Already in watchlist', 'success': True}), 200
+            
+        # Try to get stock info to save name/sector
+        company_name = symbol.replace('.NS', '').replace('.BO', '')
+        sector = 'Equity'
+        
+        # 1. Try local STOCK_DATA first (fast)
+        if symbol in STOCK_DATA:
+            company_name = STOCK_DATA[symbol]['name']
+            sector = STOCK_DATA[symbol]['sector']
+        else:
+            # 2. Try yfinance with timeout fallback
+            try:
+                ticker = yf.Ticker(symbol)
+                # Use faster access for basic info if possible
+                info = ticker.history(period="1d")
+                if not info.empty:
+                    # If we can get history, the symbol is likely valid
+                    # We can try to get detailed info but don't block too long
+                    long_info = ticker.info
+                    company_name = long_info.get('longName', long_info.get('shortName', company_name))
+                    sector = long_info.get('sector', sector)
+            except Exception as e:
+                print(f"yfinance info fetch failed for {symbol}: {e}")
+                # Keep defaults
+        
+        item = Watchlist(
+            user_id=current_user.id,
+            symbol=symbol,
+            company_name=company_name,
+            sector=sector
+        )
+        db.session.add(item)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': f'{symbol} added to watchlist'})
+    except Exception as e:
+        print(f"Error adding to watchlist: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/watchlist/<symbol>', methods=['DELETE'])
+@login_required
+def remove_from_watchlist(symbol):
+    """Remove a stock from user's watchlist"""
+    try:
+        symbol = symbol.upper().strip()
+        item = Watchlist.query.filter_by(user_id=current_user.id, symbol=symbol).first()
+        
+        if not item:
+            return jsonify({'error': 'Item not found'}), 404
+            
+        db.session.delete(item)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': f'{symbol} removed from watchlist'})
+    except Exception as e:
+        print(f"Error removing from watchlist: {e}")
         return jsonify({'error': str(e)}), 500

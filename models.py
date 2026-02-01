@@ -14,6 +14,7 @@ class User(UserMixin, db.Model):
     # Relationships
     holdings = db.relationship('Holding', backref='user', lazy=True, cascade='all, delete-orphan')
     goals = db.relationship('Goal', backref='user', lazy=True, cascade='all, delete-orphan')
+    watchlist = db.relationship('Watchlist', backref='user', lazy=True, cascade='all, delete-orphan')
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -43,4 +44,12 @@ class Goal(db.Model):
     monthly_contribution = db.Column(db.Float, default=0)
     expected_return = db.Column(db.Float, default=8.0)
     target_date = db.Column(db.Date)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Watchlist(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    symbol = db.Column(db.String(20), nullable=False)
+    company_name = db.Column(db.String(100))
+    sector = db.Column(db.String(50))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

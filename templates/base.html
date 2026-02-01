@@ -24,6 +24,52 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
     {% block extra_css %}{% endblock %}
+    <style>
+        :root {
+            --live-status: #00ff88;
+        }
+
+        .live-marker {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--live-status);
+            border-radius: 50%;
+            box-shadow: 0 0 0 rgba(0, 255, 136, 0.4);
+            animation: pulse 2s infinite;
+            vertical-align: middle;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(0, 255, 136, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(0, 255, 136, 0);
+            }
+        }
+
+        .live-status-container {
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.75rem;
+            color: #a0aec0;
+            font-weight: 500;
+            background: rgba(0, 255, 136, 0.05);
+            padding: 4px 12px;
+            border-radius: 20px;
+            border: 1px solid rgba(0, 255, 136, 0.1);
+        }
+
+        .live-status-text {
+            margin-left: 8px;
+        }
+    </style>
 </head>
 
 <body>

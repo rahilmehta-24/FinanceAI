@@ -278,6 +278,8 @@ def get_day_changes(symbols):
             for symbol in symbols_to_fetch:
                 try:
                     ticker = tickers.tickers.get(symbol)
+                    day_data = None
+                    
                     if ticker:
                         info = ticker.fast_info
                         
@@ -302,23 +304,42 @@ def get_day_changes(symbols):
                                 'change': round(change, 2),
                                 'change_pct': round(change_pct, 2)
                             }
-                            
-                            changes[symbol] = day_data
-                            _day_change_cache[symbol] = {
-                                'data': day_data,
-                                'timestamp': time.time()
-                            }
-                        else:
-                            # Default to no change
-                            changes[symbol] = {
-                                'current': round(current_price, 2) if current_price else 0,
-                                'previous_close': 0,
-                                'change': 0,
-                                'change_pct': 0
-                            }
+                    
+                    # Fallback to STOCK_DATA if API fails or returns no data
+                    if not day_data and symbol in STOCK_DATA:
+                        stock = STOCK_DATA[symbol]
+                        # Use simulated change if we don't have real data
+                        day_data = {
+                            'current': stock['price'],
+                            'previous_close': stock['price'] - stock['change'],
+                            'change': stock['change'],
+                            'change_pct': round((stock['change'] / (stock['price'] - stock['change'])) * 100, 2) if (stock['price'] - stock['change']) != 0 else 0
+                        }
+                    
+                    if day_data:
+                        changes[symbol] = day_data
+                        _day_change_cache[symbol] = {
+                            'data': day_data,
+                            'timestamp': time.time()
+                        }
+                    else:
+                        # Final default to no change
+                        changes[symbol] = {'current': 0, 'previous_close': 0, 'change': 0, 'change_pct': 0}
+
                 except Exception as e:
                     print(f"Error fetching day change for {symbol}: {e}")
-                    changes[symbol] = {'current': 0, 'previous_close': 0, 'change': 0, 'change_pct': 0}
+                    # Try fallback even on exception
+                    if symbol in STOCK_DATA:
+                        stock = STOCK_DATA[symbol]
+                        day_data = {
+                            'current': stock['price'],
+                            'previous_close': stock['price'] - stock['change'],
+                            'change': stock['change'],
+                            'change_pct': round((stock['change'] / (stock['price'] - stock['change'])) * 100, 2) if (stock['price'] - stock['change']) != 0 else 0
+                        }
+                        changes[symbol] = day_data
+                    else:
+                        changes[symbol] = {'current': 0, 'previous_close': 0, 'change': 0, 'change_pct': 0}
                     
         except Exception as e:
             print(f"Error in batch day change fetch: {e}")

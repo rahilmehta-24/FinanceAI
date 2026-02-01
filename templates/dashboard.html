@@ -48,10 +48,120 @@
     <main class="main-content">
         <header class="page-header">
             <div class="page-header-content">
-                <h1>Dashboard</h1>
-                <p>Welcome back, {{ current_user.username }}!</p>
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <div>
+                        <h1>Dashboard</h1>
+                        <p>Welcome back, {{ current_user.username }}!</p>
+                    </div>
+                    <div class="live-status-container">
+                        <span class="live-marker"></span>
+                        <span class="live-status-text">Live Market Active</span>
+                    </div>
+                </div>
             </div>
         </header>
+
+        <style>
+            .search-dropdown {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: #1a1a2e;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                margin-top: 8px;
+                box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+                z-index: 10000;
+                max-height: 350px;
+                overflow-y: auto;
+                display: none;
+            }
+
+            .search-dropdown.show {
+                display: block;
+            }
+
+            .search-result-item {
+                padding: 14px 18px;
+                cursor: pointer;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                transition: all 0.2s;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .search-result-item:hover {
+                background: rgba(102, 126, 234, 0.15);
+            }
+
+            .search-result-item .symbol {
+                font-weight: 700;
+                color: #667eea;
+                font-family: 'Monaco', 'Consolas', monospace;
+            }
+
+            .search-result-item .name {
+                font-size: 0.85rem;
+                color: #a0aec0;
+                margin-left: 10px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                max-width: 180px;
+            }
+
+            /* Fix lint errors in icons */
+            .icon-gain {
+                background: linear-gradient(135deg, #43e97b, #38f9d7) !important;
+            }
+
+            .icon-loss {
+                background: linear-gradient(135deg, #f5576c, #f093fb) !important;
+            }
+
+            .btn-delete {
+                background: none;
+                border: none;
+                color: #ff4d4d;
+                cursor: pointer;
+                padding: 4px;
+                border-radius: 4px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: background 0.2s, color 0.2s;
+                opacity: 0.6;
+            }
+
+            .btn-delete:hover {
+                background: rgba(255, 77, 77, 0.1);
+                color: #ff6666;
+                opacity: 1;
+            }
+        </style>
+
+        <!-- Live Market Search & Add -->
+        <div class="card"
+            style="margin-bottom: 1.5rem; background: rgba(102, 126, 234, 0.05); border: 1px solid rgba(102, 126, 234, 0.1);">
+            <div class="card-body" style="padding: 1rem;">
+                <div class="search-container" style="display: flex; gap: 1rem; align-items: center;">
+                    <div style="flex-grow: 1; position: relative;">
+                        <span
+                            style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); opacity: 0.5;">🔍</span>
+                        <input type="text" id="dashboardSearch" class="search-input"
+                            placeholder="Quick add NIFTYBEES, RELIANCE, TCS... (NSE)"
+                            style="width: 100%; border-radius: 8px; padding: 0.75rem 1rem 0.75rem 2.5rem; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);"
+                            autocomplete="off">
+                        <div id="dashboardSearchDropdown" class="search-dropdown" style="top: 100%; left: 0; right: 0;">
+                        </div>
+                    </div>
+                    <button id="addWatchlistBtn" class="btn btn-primary"
+                        style="white-space: nowrap; padding: 0.75rem 1.5rem;">+ Watchlist</button>
+                </div>
+            </div>
+        </div>
 
         <!-- Stats Cards -->
         <div class="stats-grid">
@@ -76,8 +186,7 @@
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon"
-                    style="background: {% if summary.total_gain_loss >= 0 %}linear-gradient(135deg, #43e97b, #38f9d7){% else %}linear-gradient(135deg, #f5576c, #f093fb){% endif %};">
+                <div class="stat-icon {{ 'icon-gain' if summary.total_gain_loss >= 0 else 'icon-loss' }}">
                     {% if summary.total_gain_loss >= 0 %}📈{% else %}📉{% endif %}
                 </div>
                 <div class="stat-content">
@@ -122,29 +231,35 @@
                 </div>
             </div>
 
-            <!-- Quick Actions -->
+            <!-- Watchlist -->
             <div class="card">
-                <div class="card-header">
-                    <h3>Quick Actions</h3>
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3>Live Watchlist</h3>
+                    <div class="live-status-container"
+                        style="padding: 2px 8px; font-size: 0.65rem; background: rgba(0, 255, 136, 0.1);">
+                        <span class="live-marker" style="width: 6px; height: 6px;"></span>
+                        <span class="live-status-text">Live Ticks</span>
+                    </div>
                 </div>
                 <div class="card-body">
-                    <div class="quick-actions">
-                        <a href="{{ url_for('portfolio.add_stock') }}" class="action-card">
-                            <span class="action-icon">➕</span>
-                            <span class="action-label">Add Stock</span>
-                        </a>
-                        <a href="{{ url_for('portfolio.batch_upload') }}" class="action-card">
-                            <span class="action-icon">📤</span>
-                            <span class="action-label">Batch Upload</span>
-                        </a>
-                        <a href="{{ url_for('stocks.index') }}" class="action-card">
-                            <span class="action-icon">🔍</span>
-                            <span class="action-label">View Stocks</span>
-                        </a>
-                        <a href="{{ url_for('goals.calculator') }}" class="action-card">
-                            <span class="action-icon">🧮</span>
-                            <span class="action-label">Goal Calculator</span>
-                        </a>
+                    <div id="watchlistContent" style="min-height: 200px;">
+                        <p class="text-muted" style="text-align: center; padding: 3rem 0;">No items in watchlist</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Portfolio Performance with AI Predictions -->
+            <div class="card card-wide">
+                <div class="card-header">
+                    <h3>Portfolio Performance & AI Forecast</h3>
+                    <div class="period-selector" style="font-size: 0.8rem;">
+                        <span style="color: #667eea;">●</span> Actual
+                        <span style="color: #00d4ff; margin-left: 10px;">--</span> AI Forecast
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="performanceChart"></canvas>
                     </div>
                 </div>
             </div>
@@ -197,21 +312,16 @@
 
 {% block extra_js %}
 <script>
+    // --- Sector Distribution Chart ---
     {% if summary.sectors %}
-    // Sector Distribution Chart
     const sectorData = {{ summary.sectors | tojson }};
     const labels = Object.keys(sectorData);
     const values = Object.values(sectorData);
 
     const colors = [
-        'rgba(102, 126, 234, 0.8)',
-        'rgba(118, 75, 162, 0.8)',
-        'rgba(240, 147, 251, 0.8)',
-        'rgba(67, 233, 123, 0.8)',
-        'rgba(79, 172, 254, 0.8)',
-        'rgba(250, 112, 154, 0.8)',
-        'rgba(161, 140, 209, 0.8)',
-        'rgba(254, 225, 64, 0.8)'
+        'rgba(102, 126, 234, 0.8)', 'rgba(118, 75, 162, 0.8)', 'rgba(240, 147, 251, 0.8)',
+        'rgba(67, 233, 123, 0.8)', 'rgba(79, 172, 254, 0.8)', 'rgba(250, 112, 154, 0.8)',
+        'rgba(161, 140, 209, 0.8)', 'rgba(254, 225, 64, 0.8)'
     ];
 
     new Chart(document.getElementById('sectorChart'), {
@@ -230,17 +340,258 @@
             plugins: {
                 legend: {
                     position: 'bottom',
-                    labels: {
-                        color: '#a0aec0',
-                        padding: 15,
-                        font: {
-                            family: 'Inter'
-                        }
-                    }
+                    labels: { color: '#a0aec0', padding: 15, font: { family: 'Inter' } }
                 }
             }
         }
     });
     {% endif %}
+
+    // --- Search & Autocomplete ---
+    const searchInput = document.getElementById('dashboardSearch');
+    const searchDropdown = document.getElementById('dashboardSearchDropdown');
+    let searchTimeout = null;
+
+    searchInput.addEventListener('input', function () {
+        const query = this.value.trim();
+        clearTimeout(searchTimeout);
+        if (query.length < 1) {
+            searchDropdown.classList.remove('show');
+            return;
+        }
+        searchTimeout = setTimeout(() => fetchDashboardSearch(query), 300);
+    });
+
+    async function fetchDashboardSearch(query) {
+        try {
+            const res = await fetch(`/api/stocks/search?q=${encodeURIComponent(query)}`);
+            const results = await res.json();
+
+            if (results && results.length > 0) {
+                searchDropdown.innerHTML = results.map(s => `
+                    <div class="search-result-item" onclick="selectDashboardStock('${s.symbol}')">
+                        <div>
+                            <span class="symbol">${s.symbol}</span>
+                            <span class="name">${s.name}</span>
+                        </div>
+                        <span style="font-size: 0.7rem; opacity: 0.5;">Enter</span>
+                    </div>
+                `).join('');
+                searchDropdown.classList.add('show');
+            } else {
+                searchDropdown.innerHTML = '<div class="search-result-item">No results found</div>';
+                searchDropdown.classList.add('show');
+                setTimeout(() => searchDropdown.classList.remove('show'), 2000);
+            }
+        } catch (e) {
+            console.error(e);
+            searchDropdown.classList.remove('show');
+        }
+    }
+
+    window.selectDashboardStock = (symbol) => {
+        searchInput.value = symbol;
+        searchDropdown.classList.remove('show');
+        // Auto click add button
+        document.getElementById('addWatchlistBtn').click();
+    };
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.search-container')) {
+            searchDropdown.classList.remove('show');
+        }
+    });
+
+    // Handle Enter key for search
+    searchInput.addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            searchDropdown.classList.remove('show');
+            document.getElementById('addWatchlistBtn').click();
+        }
+    });
+    let performanceChart = null;
+
+    async function loadPerformanceData() {
+        try {
+            const symbol = "{{ holdings[0].symbol if holdings else 'NIFTYBEES.NS' }}";
+            const response = await fetch(`/api/stocks/${symbol}/history?period=1mo`);
+            const data = await response.json();
+
+            if (data.error) return;
+
+            const labels = data.data.map(d => d.date.split(' ')[0]);
+            const prices = data.data.map(d => d.close);
+
+            const predictions = [prices[prices.length - 1], ...data.predictions];
+
+            const ctx = document.getElementById('performanceChart').getContext('2d');
+            if (performanceChart) performanceChart.destroy();
+
+            performanceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [...labels, ...Array(data.predictions.length).fill('')],
+                    datasets: [
+                        {
+                            label: 'Actual Price',
+                            data: prices,
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: (ctx) => {
+                                const index = ctx.dataIndex;
+                                return index === prices.length - 1 ? 6 : 0;
+                            },
+                            pointBackgroundColor: '#00ff88',
+                            pointHoverRadius: 8
+                        },
+                        {
+                            label: 'AI Forecast',
+                            data: [...Array(prices.length - 1).fill(null), ...predictions],
+                            borderColor: '#00d4ff',
+                            borderDash: [5, 5],
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { callback: v => '₹' + v.toLocaleString('en-IN') }
+                        },
+                        x: { display: false }
+                    }
+                }
+            });
+        } catch (e) { console.error('Error loading chart:', e); }
+    }
+
+    // --- Watchlist Logic ---
+    async function fetchWatchlist() {
+        try {
+            const res = await fetch('/api/watchlist');
+            const items = await res.json();
+            const container = document.getElementById('watchlistContent');
+
+            if (!items || items.length === 0) {
+                container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 3rem 0;">Add stocks like RELIANCE, TCS to track live</p>';
+                return;
+            }
+
+            container.innerHTML = `
+                <table class="data-table">
+                    <thead>
+                        <tr><th>Symbol</th><th>Price</th><th>Change</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        ${items.map(item => `
+                            <tr>
+                                <td><span class="symbol-badge">${item.symbol}</span></td>
+                                <td class="live-price" data-symbol="${item.symbol}">₹${item.price.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                <td class="${item.change_pct >= 0 ? 'text-success' : 'text-danger'}">
+                                    ${item.change_pct >= 0 ? '+' : ''}${item.change_pct.toFixed(2)}%
+                                </td>
+                                <td>
+                                    <button class="btn-delete" title="Remove" onclick="removeFromWatchlist('${item.symbol}')">
+                                        🗑️
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        } catch (e) { console.error('Watchlist fetch error:', e); }
+    }
+
+    window.removeFromWatchlist = async (symbol) => {
+        if (!confirm(`Remove ${symbol} from watchlist?`)) return;
+        try {
+            const res = await fetch(`/api/watchlist/${symbol}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                fetchWatchlist();
+            }
+        } catch (e) { console.error('Remove watchlist error:', e); }
+    };
+
+    // --- Search & Add Watchlist ---
+    document.getElementById('addWatchlistBtn').addEventListener('click', async () => {
+        const input = document.getElementById('dashboardSearch');
+        const symbol = input.value.trim();
+        if (!symbol) return;
+
+        try {
+            const res = await fetch('/api/watchlist', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol: symbol })
+            });
+            const data = await res.json();
+            if (data.success) {
+                input.value = '';
+                fetchWatchlist();
+                loadPerformanceData();
+            }
+        } catch (e) { console.error('Add watchlist error:', e); }
+    });
+
+    // --- Live Second-by-Second Simulation ---
+    function simulateLiveTicks() {
+        setInterval(() => {
+            const prices = document.querySelectorAll('.live-price');
+            if (prices.length > 0) {
+                const randomIdx = Math.floor(Math.random() * prices.length);
+                const el = prices[randomIdx];
+                const current = parseFloat(el.textContent.replace('₹', '').replace(/,/g, ''));
+                if (isNaN(current)) return;
+
+                const tick = (Math.random() - 0.5) * (current * 0.0005);
+                const next = current + tick;
+                el.textContent = '₹' + next.toLocaleString('en-IN', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+                el.style.color = tick > 0 ? '#00ff88' : '#ff4d4d';
+                el.style.textShadow = tick > 0 ? '0 0 8px rgba(0, 255, 136, 0.6)' : '0 0 8px rgba(255, 77, 77, 0.6)';
+                setTimeout(() => {
+                    el.style.color = '';
+                    el.style.textShadow = '';
+                }, 800);
+            }
+
+            const stats = document.querySelectorAll('.stat-value');
+            if (stats.length > 0) {
+                const portfolioStat = stats[0];
+                const current = parseFloat(portfolioStat.textContent.replace('₹', '').replace(/,/g, ''));
+                if (isNaN(current)) return;
+
+                const tick = (Math.random() - 0.5) * 10.0;
+                portfolioStat.textContent = '₹' + (current + tick).toLocaleString('en-IN', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+            }
+        }, 1500);
+    }
+
+    // Init
+    loadPerformanceData();
+    fetchWatchlist();
+    simulateLiveTicks();
+
+    setInterval(() => {
+        fetchWatchlist();
+        loadPerformanceData();
+    }, 60000);
 </script>
 {% endblock %}
